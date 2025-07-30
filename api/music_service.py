@@ -36,13 +36,13 @@ class MusicService:
         combined_filter = pd.Series(True, index=self.main_df.index)
         
         for feature in self.deciles_features_list:
-            if filters_object[feature+'_min_decile'] and filters_object[feature+'_max_decile']:
+            if filters_object[feature+'_min_decile'] is not None and filters_object[feature+'_max_decile'] is not None:
                 combined_filter = combined_filter & \
                     (self.main_df[feature+'_decile'] >= filters_object[feature+'_min_decile']) & \
                     (self.main_df[feature+'_decile'] <= filters_object[feature+'_max_decile'])
         
         for feature in self.direct_use_features + self.minmax_only_features:
-            if filters_object[feature+'_min'] and filters_object[feature+'_max']:
+            if filters_object[feature+'_min'] is not None and filters_object[feature+'_max'] is not None:
                 combined_filter = combined_filter & \
                     (self.main_df[feature] >= filters_object[feature+'_min']) & \
                     (self.main_df[feature] <= filters_object[feature+'_max'])
@@ -159,6 +159,7 @@ class MusicService:
                 liveness_decile=int(row["liveness_decile"]),
                 valence_decile=int(row["valence_decile"]),
                 views_decile=int(row["views_decile"]),
+                views=int(row["views"]) if pd.notna(row.get("views")) else None,
                 loudness=float(row["loudness"]),
                 tempo=float(row["tempo"]),
                 relevance_score=float(row["relevance_score"]),

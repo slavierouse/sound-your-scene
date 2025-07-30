@@ -13,6 +13,7 @@ class JobStatus(str, Enum):
 # Basic request/response models
 class SearchRequest(BaseModel):
     query_text: str
+    conversation_history: Optional['ConversationHistory'] = None
 
 class RefineRequest(BaseModel):
     job_id: str
@@ -63,6 +64,9 @@ class TrackResult(BaseModel):
     liveness_decile: int
     valence_decile: int
     views_decile: int
+    
+    # Raw views count for better sorting
+    views: Optional[int] = None
     
     # Direct audio features
     loudness: float
