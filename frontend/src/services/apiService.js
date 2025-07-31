@@ -1,13 +1,16 @@
 const API_BASE_URL = 'http://localhost:8000'
 
 export const apiService = {
-  async createSearch(queryText) {
+  async createSearch(queryText, conversationHistory = null) {
     const response = await fetch(`${API_BASE_URL}/search`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ query_text: queryText }),
+      body: JSON.stringify({ 
+        query_text: queryText,
+        conversation_history: conversationHistory 
+      }),
     })
 
     if (!response.ok) {

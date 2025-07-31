@@ -1,10 +1,11 @@
 import { MagnifyingGlassIcon, MusicalNoteIcon } from '@heroicons/react/24/outline'
 
-function SearchForm({ query, setQuery, onSubmit, isLoading }) {
+function SearchForm({ query, setQuery, onSubmit, isLoading, placeholder, buttonText }) {
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!query.trim()) return
     onSubmit(query.trim())
+    setQuery('') // Clear input after submit
   }
 
   return (
@@ -19,7 +20,7 @@ function SearchForm({ query, setQuery, onSubmit, isLoading }) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Music for a period drama set in Elizabethan England"
+            placeholder={placeholder || "Music for a period drama set in Elizabethan England"}
             className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
             disabled={isLoading}
           />
@@ -32,7 +33,7 @@ function SearchForm({ query, setQuery, onSubmit, isLoading }) {
           className="px-6 py-3 bg-teal-600 hover:bg-teal-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
         >
           <MusicalNoteIcon className="h-5 w-5" />
-          {isLoading ? 'Searching...' : 'Vibe'}
+          {isLoading ? 'Searching...' : (buttonText || 'Vibe')}
         </button>
       </div>
     </form>
