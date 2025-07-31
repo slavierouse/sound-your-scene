@@ -43,7 +43,11 @@ class LLMService:
             response_schema=FiltersModel,
         )
         
-        response = self.client.models.generate_content(
+        import asyncio
+        
+        # Run the synchronous LLM call in a thread pool
+        response = await asyncio.to_thread(
+            self.client.models.generate_content,
             model="gemini-2.5-flash",
             contents=contents,
             config=cfg

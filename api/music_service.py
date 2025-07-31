@@ -146,7 +146,7 @@ class MusicService:
                 track=row["track"],
                 artist=row["artist"],
                 album_release_year=int(row["album_release_year"]),
-                spotify_artist_genres=row.get("spotify_artist_genres"),
+                spotify_artist_genres=str(row.get("spotify_artist_genres", "")) if pd.notna(row.get("spotify_artist_genres")) else "",
                 track_is_explicit=bool(row["track_is_explicit"]),
                 duration_ms=int(row["duration_ms"]),
                 url_youtube=row.get("url_youtube"),
