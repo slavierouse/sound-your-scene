@@ -43,7 +43,8 @@ async def create_search_job(request: SearchRequest, background_tasks: Background
         process_search_job, 
         job_id, 
         request.query_text, 
-        request.conversation_history if request.conversation_history else None
+        request.conversation_history if request.conversation_history else None,
+        request.image_data
     )
     
     return {"job_id": job_id}
@@ -75,7 +76,7 @@ async def get_job_status(job_id: str) -> JobResponse:
     
     return response
 
-async def process_search_job(job_id: str, query_text: str, existing_conversation_history: Optional[ConversationHistory] = None):
+async def process_search_job(job_id: str, query_text: str, existing_conversation_history: Optional[ConversationHistory] = None, image_data: Optional[str] = None):
     """Process a search job with auto-refinement tracking"""
     try:
         # Update job status to running
@@ -109,7 +110,7 @@ async def process_search_job(job_id: str, query_text: str, existing_conversation
             filters_json, final_results_df = await run_user_refinement_with_auto_refine(job_id, query_text, conversation_history)
         else:
             # This is initial search - run normal auto-refinement process
-            filters_json, final_results_df = await run_auto_refine_with_tracking(job_id, query_text)
+            filters_json, final_results_df = await run_auto_refine_with_tracking(job_id, query_text, image_data=image_data)
         
         # Convert results to API format
         api_results = music_service.convert_to_api_results(final_results_df, filters_json, job_id)
@@ -132,14 +133,14 @@ async def process_search_job(job_id: str, query_text: str, existing_conversation
         job_data.error_message = str(e)
         store_job(job_id, job_data)
 
-async def run_auto_refine_with_tracking(job_id: str, user_query: str, max_iters: int = 3):
+async def run_auto_refine_with_tracking(job_id: str, user_query: str, max_iters: int = 3, image_data: Optional[str] = None):
     """Run auto-refinement with detailed step tracking"""
     TARGET_MIN, TARGET_MAX = 50, 150
     target_range = f"{TARGET_MIN}-{TARGET_MAX}"
     
     # Step 1: Initial search
-    initial_prompt = llm_service.create_initial_prompt(user_query)
-    filters_json = await llm_service.query_llm(initial_prompt)
+    initial_prompt = llm_service.create_initial_prompt(user_query, has_image=bool(image_data))
+    filters_json = await llm_service.query_llm(initial_prompt, image_data=image_data)
     
     # Get initial results
     search_result = music_service.search(filters_json)
@@ -154,7 +155,8 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, max_iters:
         filters_json=filters_json,
         result_count=len(results_df),
         result_summary=summary,
-        target_range=target_range
+        target_range=target_range,
+        image_data=image_data
     )
 
     current_filters = filters_json
@@ -182,6 +184,15 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, max_iters:
         refined_results = refined_search["results"]
         refined_summary = refined_search["summary"]
         
+        # Get image data from initial step if it exists
+        job_data = get_job(job_id)
+        initial_image_data = None
+        if job_data.conversation_history and job_data.conversation_history.steps:
+            # Look for image data in the first step (initial query)
+            first_step = job_data.conversation_history.steps[0]
+            if first_step.step_type == "initial" and first_step.image_data:
+                initial_image_data = first_step.image_data
+        
         # Record refinement step
         await add_refinement_step(
             job_id=job_id,
@@ -190,7 +201,8 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, max_iters:
             filters_json=refined_filters,
             result_count=len(refined_results),
             result_summary=refined_summary,
-            target_range=target_range
+            target_range=target_range,
+            image_data=initial_image_data
         )
         
         current_filters = refined_filters
@@ -229,6 +241,14 @@ async def run_user_refinement(job_id: str, user_feedback: str, conversation_hist
     refined_search = music_service.search(refined_filters)
     df_with_scores = refined_search['results']
     
+    # Get image data from initial step if it exists
+    initial_image_data = None
+    if conversation_history.steps:
+        # Look for image data in the first step (initial query)
+        first_step = conversation_history.steps[0]
+        if first_step.step_type == "initial" and first_step.image_data:
+            initial_image_data = first_step.image_data
+    
     # Create new refinement step
     new_step = RefinementStep(
         step_number=len(conversation_history.steps) + 1,
@@ -239,7 +259,8 @@ async def run_user_refinement(job_id: str, user_feedback: str, conversation_hist
         user_message=refined_filters.get('user_message', ''),
         rationale=refined_filters.get('reflection', ''),
         result_summary={"top_results": df_with_scores.head(10).to_dict('records') if len(df_with_scores) > 0 else []},
-        timestamp=datetime.now()
+        timestamp=datetime.now(),
+        image_data=initial_image_data
     )
     
     # Add step to conversation history
@@ -278,6 +299,15 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
     current_results = initial_search['results']
     summary = initial_search["summary"]
     
+    # Get image data from initial step if it exists
+    job_data = get_job(job_id)
+    initial_image_data = None
+    if job_data.conversation_history and job_data.conversation_history.steps:
+        # Look for image data in the first step (initial query)
+        first_step = job_data.conversation_history.steps[0]
+        if first_step.step_type == "initial" and first_step.image_data:
+            initial_image_data = first_step.image_data
+    
     # Record initial refinement step
     await add_refinement_step(
         job_id=job_id,
@@ -286,7 +316,8 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
         filters_json=initial_filters,
         result_count=len(current_results),
         result_summary=summary,
-        target_range="50-150 results"
+        target_range="50-150 results",
+        image_data=initial_image_data
     )
     
     # Step 2-4: Run auto-refinement iterations like initial search
@@ -318,6 +349,15 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
         refined_results = refined_search["results"]
         refined_summary = refined_search["summary"]
         
+        # Get image data from initial step if it exists
+        job_data = get_job(job_id)
+        initial_image_data = None
+        if job_data.conversation_history and job_data.conversation_history.steps:
+            # Look for image data in the first step (initial query)
+            first_step = job_data.conversation_history.steps[0]
+            if first_step.step_type == "initial" and first_step.image_data:
+                initial_image_data = first_step.image_data
+        
         # Record refinement step
         await add_refinement_step(
             job_id=job_id,
@@ -326,7 +366,8 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
             filters_json=refined_filters,
             result_count=len(refined_results),
             result_summary=refined_summary,
-            target_range=target_range
+            target_range=target_range,
+            image_data=initial_image_data
         )
         
         current_filters = refined_filters
@@ -348,7 +389,8 @@ async def add_refinement_step(
     filters_json: Dict[str, Any],
     result_count: int,
     result_summary: Dict[str, Any],
-    target_range: str = None
+    target_range: str = None,
+    image_data: Optional[str] = None
 ):
     """Add a refinement step to the conversation history"""
     job_data = get_job(job_id)
@@ -365,7 +407,8 @@ async def add_refinement_step(
         rationale=filters_json.get("reflection", ""),
         result_summary=result_summary,
         timestamp=datetime.now(),
-        target_range=target_range
+        target_range=target_range,
+        image_data=image_data
     )
     
     job_data.conversation_history.steps.append(refinement_step)

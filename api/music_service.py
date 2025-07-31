@@ -6,7 +6,7 @@ from api.models import TrackResult, SearchResults
 class MusicService:
     def __init__(self):
         self.main_df = None
-        self.deciles_features_list = ['danceability', 'energy', 'speechiness','acousticness', 'liveness', 'valence','views']
+        self.deciles_features_list = ['danceability', 'energy','acousticness', 'liveness', 'valence','views'] #, 'speechiness'
         self.direct_use_features = ['loudness','tempo','duration_ms','instrumentalness']
         self.minmax_only_features = ['album_release_year','track_is_explicit']
         
@@ -97,7 +97,7 @@ class MusicService:
         TOP_K = top_k
         EXAMPLE_COLS = [
             "spotify_track_id", "track", "artist","spotify_artist_genres",
-            'danceability_decile', 'energy_decile', 'speechiness_decile','acousticness_decile', 'instrumentalness_decile', 'liveness_decile', 'valence_decile','views_decile',
+            'danceability_decile', 'energy_decile', 'acousticness_decile', 'instrumentalness_decile', 'liveness_decile', 'valence_decile','views_decile', #'speechiness_decile',
             'loudness', "tempo", "instrumentalness",
             "album_release_year", "duration_ms", "track_is_explicit",
             "relevance_score",
@@ -158,7 +158,7 @@ class MusicService:
                 spotify_url=f"https://open.spotify.com/track/{row['spotify_track_id']}",
                 danceability_decile=int(row["danceability_decile"]),
                 energy_decile=int(row["energy_decile"]),
-                speechiness_decile=int(row["speechiness_decile"]),
+                #speechiness_decile=int(row["speechiness_decile"]),
                 acousticness_decile=int(row["acousticness_decile"]),
                 instrumentalness_decile=int(row["instrumentalness_decile"]),
                 liveness_decile=int(row["liveness_decile"]),

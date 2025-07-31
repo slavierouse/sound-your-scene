@@ -10,6 +10,7 @@ import { bookmarkService } from './services/bookmarkService'
 
 function App() {
   const [query, setQuery] = useState('')
+  const [imageData, setImageData] = useState(null)
   const [isViewingSaved, setIsViewingSaved] = useState(false)
   const [bookmarkCount, setBookmarkCount] = useState(0)
   const [bookmarkKey, setBookmarkKey] = useState(0)
@@ -30,7 +31,7 @@ function App() {
   }, [])
 
   // Handle new search - clear bookmarks for initial search, keep for refinements
-  const handleNewSearch = (queryText) => {
+  const handleNewSearch = (queryText, currentImageData = null) => {
     // Clear bookmarks only if this is an initial search (no chat history)
     if (chatHistory.length === 0) {
       bookmarkService.clearBookmarksOnNewQuery()
@@ -40,7 +41,20 @@ function App() {
     setIsViewingSaved(false)
     setHasStartedSession(true) // Mark that user has started a session
     resetSession()
-    startSearch(queryText)
+    startSearch(queryText, currentImageData)
+  }
+
+  // Handle image upload
+  const handleImageUploaded = (uploadedImageData) => {
+    setImageData(uploadedImageData)
+  }
+
+  // Handle image removal
+  const handleImageRemoved = () => {
+    if (imageData?.previewUrl && imageData.previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(imageData.previewUrl)
+    }
+    setImageData(null)
   }
 
   // Handle toggle between search and saved view
@@ -63,7 +77,7 @@ function App() {
           What type of music are you looking for?
         </h1>
         <p className="text-sm sm:text-base text-gray-600">
-          I can help you find music based on your mood, vibe, duration, era, genre, and more. Just tell me what you're looking for!
+          I can help you find music based on the vibe you want to achieve. Just tell me what you're looking for!
         </p>
       </header>
 
@@ -78,6 +92,10 @@ function App() {
                 setQuery={setQuery}
                 onSubmit={handleNewSearch}
                 isLoading={isLoading}
+                imageData={imageData}
+                onImageUploaded={handleImageUploaded}
+                onImageRemoved={handleImageRemoved}
+                isInitialSearch={true}
               />
               <Examples query={query} setQuery={setQuery} />
             </>
@@ -128,6 +146,7 @@ function App() {
                   : "Try widening your search or asking for different genres, time periods, or moods..."
                 }
                 buttonText="Continue"
+                isInitialSearch={false}
               />
             </div>
           )}

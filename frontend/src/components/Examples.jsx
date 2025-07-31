@@ -4,7 +4,7 @@ const examples = [
   {
     emoji: '👑',
     shorthand: 'Period drama',
-    query: 'Music for a period drama set in Elizabethan England'
+    query: 'Music for a period drama set in England'
   },
   {
     emoji: '📼',
@@ -75,7 +75,8 @@ function Examples({ query, setQuery }) {
         </span>
         <div className="text-sm text-gray-600 leading-relaxed">
           This chatbot uses audio analysis of songs so you can search them by vibe. 
-          You can use a mood ("sad"), a purpose ("dancing"), a genre ("hip hop"), an era ("80s"), and even specific ranges for BPM and duration. 
+          You can use a mood ("sad"), a purpose ("dancing"), a genre ("hip hop"), an era ("80s"), and even specific ranges for BPM (e.g. 90-120) and duration (e.g. "2-4 minutes"). 
+          You can add an image to help the bot understand the scene even better. 
           This should be useful for finding music choices for a movie, TV show, or video game soundtrack.
         </div>
       </div>
@@ -88,8 +89,10 @@ function Examples({ query, setQuery }) {
         <div className="text-sm text-gray-600 leading-relaxed">
           This demo relies on an 
           <a className="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" href="https://www.kaggle.com/datasets/salvatorerastelli/spotify-and-youtube" target="_blank" rel="noopener noreferrer"> open source dataset </a> 
-          of about 18,000 songs from Youtube that were matched to their Spotify track ID, enriched with more metadata from Spotify. 
-          An LLM agent ingests the user's query and converts it to a set of filters and weights that are applied to the dataset. The LLM queries the data iteratively to refine the results, both autonomously and with user input. 
+          of about 18,000 songs from Youtube that were matched to their Spotify track ID, enriched with more metadata from Spotify, including audio analysis features. 
+          An LLM agent built leveraging the 
+          <a className="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" href="https://ai.google.dev/" target="_blank" rel="noopener noreferrer"> Gemini API </a>
+          ingests the user's query and converts it to a set of filters and weights that are applied to the dataset. The LLM queries the data iteratively to refine the results, both autonomously and with user input. 
           This was initially built as a Python Notebook, and converted to this demo with the support of Claude Code and Cursor.
         </div>
       </div>
@@ -101,7 +104,13 @@ function Examples({ query, setQuery }) {
         </span>
         <div className="text-sm text-gray-600 leading-relaxed">
           Surprisingly, Spotify's own search does not honor queries of these sorts. 
-          The only publicly available alternative I've found that works with open text search is <a href="https://cyanite.ai/" className="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" target="_blank" rel="noopener noreferrer">Cyanite.ai</a>.
+          The only publicly available alternative I've found that works with open text search is <a href="https://cyanite.ai/" className="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" target="_blank" rel="noopener noreferrer">Cyanite.ai</a>. 
+          I searched music related subreddits and 
+          <a href="https://www.reddit.com/r/LetsTalkMusic/comments/cak0ib/how_do_yall_find_music_to_fit_into_certain_vibes/" className="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" target="_blank" rel="noopener noreferrer"> found </a>
+          <a href="https://www.reddit.com/r/LetsTalkMusic/comments/mqdx4i/whats_the_best_way_to_discover_new_music_and_bands/" className="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" target="_blank" rel="noopener noreferrer">a </a>
+          <a href="https://www.reddit.com/r/LetsTalkMusic/comments/1h005d3/what_music_do_you_turn_to_based_on_your_mood_and/" className="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" target="_blank" rel="noopener noreferrer">few </a> 
+          <a href="https://www.reddit.com/r/LetsTalkMusic/comments/171obry/finding_music_by_moodtopictheme/" className="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" target="_blank" rel="noopener noreferrer">threads </a>
+             that detail user painpoints.
         </div>
       </div>
 

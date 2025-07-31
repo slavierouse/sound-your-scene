@@ -12,7 +12,7 @@ export function useSearch() {
   const [conversationHistory, setConversationHistory] = useState(null)
   const [userResponseCount, setUserResponseCount] = useState(0)
 
-  const startSearch = async (queryText) => {
+  const startSearch = async (queryText, imageData = null) => {
     // Check 10 user responses limit
     if (userResponseCount >= 10) {
       setError("You've reached the maximum of 10 refinements. Please start a new search session.")
@@ -32,11 +32,12 @@ export function useSearch() {
     setChatHistory(prev => [...prev, {
       content: queryText,
       isUser: true,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      imageData: imageData // Include image data in chat history
     }])
 
     try {
-      const data = await apiService.createSearch(queryText, conversationHistory)
+      const data = await apiService.createSearch(queryText, conversationHistory, imageData?.base64Data)
       setJobId(data.job_id)
     } catch (err) {
       setError(err.message)

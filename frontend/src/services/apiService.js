@@ -1,7 +1,7 @@
-const API_BASE_URL = 'http://localhost:8000'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 export const apiService = {
-  async createSearch(queryText, conversationHistory = null) {
+  async createSearch(queryText, conversationHistory = null, imageData = null) {
     const response = await fetch(`${API_BASE_URL}/search`, {
       method: 'POST',
       headers: {
@@ -9,7 +9,8 @@ export const apiService = {
       },
       body: JSON.stringify({ 
         query_text: queryText,
-        conversation_history: conversationHistory 
+        conversation_history: conversationHistory,
+        image_data: imageData
       }),
     })
 
