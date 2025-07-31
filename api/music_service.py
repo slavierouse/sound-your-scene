@@ -6,8 +6,8 @@ from api.models import TrackResult, SearchResults
 class MusicService:
     def __init__(self):
         self.main_df = None
-        self.deciles_features_list = ['danceability', 'energy', 'speechiness','acousticness', 'instrumentalness', 'liveness', 'valence','views']
-        self.direct_use_features = ['loudness','tempo','duration_ms']
+        self.deciles_features_list = ['danceability', 'energy', 'speechiness','acousticness', 'liveness', 'valence','views']
+        self.direct_use_features = ['loudness','tempo','duration_ms','instrumentalness']
         self.minmax_only_features = ['album_release_year','track_is_explicit']
         
     def initialize(self, data_path: str = 'data/main_df.csv'):
@@ -67,15 +67,20 @@ class MusicService:
         
         filtered_results = self.main_df[combined_filter].copy()
 
-        relevance_weights = []
-        cols = self.deciles_features_list + self.direct_use_features
-        for feature in cols:
+        # Build relevance score using deciles for scoring
+        relevance_score = pd.Series(0, index=filtered_results.index)
+        
+        # Add decile-based scoring
+        for feature in self.deciles_features_list:
             if filters_object[feature+'_decile_weight']:
-                relevance_weights.append(filters_object[feature+'_decile_weight'])
-            else:
-                relevance_weights.append(0)
-
-        filtered_results['relevance_score'] = filtered_results[self.deciles_features_list + self.direct_use_features].mul(relevance_weights).sum(axis=1)
+                relevance_score += filtered_results[feature+'_decile'] * filters_object[feature+'_decile_weight']
+        
+        # Add direct use features scoring (using deciles for scoring)
+        for feature in self.direct_use_features:
+            if filters_object[feature+'_decile_weight']:
+                relevance_score += filtered_results[feature+'_decile'] * filters_object[feature+'_decile_weight']
+        
+        filtered_results['relevance_score'] = relevance_score
 
         boost_terms = self._split_terms(filters_object.get('spotify_artist_genres_boosted',''))
 
@@ -93,7 +98,7 @@ class MusicService:
         EXAMPLE_COLS = [
             "spotify_track_id", "track", "artist","spotify_artist_genres",
             'danceability_decile', 'energy_decile', 'speechiness_decile','acousticness_decile', 'instrumentalness_decile', 'liveness_decile', 'valence_decile','views_decile',
-            'loudness', "tempo",
+            'loudness', "tempo", "instrumentalness",
             "album_release_year", "duration_ms", "track_is_explicit",
             "relevance_score",
             "url_youtube"
@@ -136,8 +141,8 @@ class MusicService:
     
     def convert_to_api_results(self, results_df: pd.DataFrame, filters_json: Dict[str, Any], job_id: str) -> SearchResults:
         """Convert pandas results to API response format"""
-        # Sort by relevance and take top 50 for API response
-        top_results = results_df.sort_values("relevance_score", ascending=False).head(50)
+        # Sort by relevance and take top 150 for API response
+        top_results = results_df.sort_values("relevance_score", ascending=False).head(150)
         
         tracks = []
         for idx, (_, row) in enumerate(top_results.iterrows()):
@@ -162,6 +167,7 @@ class MusicService:
                 views=int(row["views"]) if pd.notna(row.get("views")) else None,
                 loudness=float(row["loudness"]),
                 tempo=float(row["tempo"]),
+                instrumentalness=float(row["instrumentalness"]),
                 relevance_score=float(row["relevance_score"]),
                 rank_position=idx + 1
             )

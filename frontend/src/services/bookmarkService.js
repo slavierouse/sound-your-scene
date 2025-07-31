@@ -15,12 +15,12 @@ class BookmarkService {
       // Validate structure
       if (!Array.isArray(data)) return []
       
-      return data.filter(bookmark => 
+      const filtered = data.filter(bookmark => 
         bookmark.track && 
-        bookmark.job_id && 
-        bookmark.original_query && 
         typeof bookmark.saved_at === 'string'
+        // Remove job_id and original_query validation since they're not always present
       )
+      return filtered
     } catch (error) {
       console.error('Error loading bookmarks:', error)
       return []

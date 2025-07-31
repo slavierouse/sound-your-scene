@@ -11,10 +11,11 @@ function FloatingActionButton({
     return (
       <button
         onClick={onToggleView}
-        className="fixed bottom-6 left-6 flex items-center gap-3 px-4 py-3 bg-gray-800 text-white hover:bg-gray-900 rounded-lg shadow-lg font-medium transition-colors"
+        className="fixed bottom-4 left-4 sm:bottom-6 sm:left-6 flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 bg-gray-800 text-white hover:bg-gray-900 rounded-lg shadow-lg text-sm sm:text-base font-medium transition-colors"
       >
-        <ArrowLeftIcon className="w-5 h-5" />
-        <span>Back to search</span>
+        <ArrowLeftIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+        <span className="hidden sm:inline">Back to search</span>
+        <span className="sm:hidden">Back</span>
       </button>
     )
   }
@@ -29,10 +30,11 @@ function FloatingActionButton({
     return (
       <button
         onClick={onToggleView}
-        className="fixed bottom-6 left-6 flex items-center gap-3 px-4 py-3 bg-teal-600 text-white rounded-lg shadow-lg hover:bg-teal-700 transition-colors font-medium"
+        className="fixed bottom-4 left-4 sm:bottom-6 sm:left-6 flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 bg-teal-600 text-white rounded-lg shadow-lg hover:bg-teal-700 transition-colors text-sm sm:text-base font-medium"
       >
-        <BookmarkIcon className="w-5 h-5" />
-        <span>See your last {bookmarkCount} saved tracks</span>
+        <BookmarkIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+        <span className="hidden sm:inline">See your last {bookmarkCount} saved tracks</span>
+        <span className="sm:hidden">Saved ({bookmarkCount})</span>
       </button>
     )
   }
@@ -42,10 +44,11 @@ function FloatingActionButton({
     return (
       <button
         onClick={onToggleView}
-        className="fixed bottom-6 left-6 flex items-center gap-3 px-4 py-3 bg-teal-600 text-white hover:bg-teal-700 rounded-lg shadow-lg font-medium transition-colors"
+        className="fixed bottom-4 left-4 sm:bottom-6 sm:left-6 flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 bg-teal-600 text-white hover:bg-teal-700 rounded-lg shadow-lg text-sm sm:text-base font-medium transition-colors"
       >
-        <BookmarkIcon className="w-5 h-5" />
-        <span>View {bookmarkCount} saved tracks</span>
+        <BookmarkIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+        <span className="hidden sm:inline">View {bookmarkCount} saved tracks</span>
+        <span className="sm:hidden">Saved ({bookmarkCount})</span>
       </button>
     )
   }

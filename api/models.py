@@ -71,6 +71,7 @@ class TrackResult(BaseModel):
     # Direct audio features
     loudness: float
     tempo: float
+    instrumentalness: float
     
     # Computed relevance
     relevance_score: float
@@ -113,8 +114,8 @@ class JobData(BaseModel):
 # Dynamic filters model - recreated from notebook logic
 def create_filters_model():
     """Create the dynamic Pydantic model for LLM filters"""
-    deciles_features_list = ['danceability', 'energy', 'speechiness','acousticness', 'instrumentalness', 'liveness', 'valence','views']
-    direct_use_features = ['loudness','tempo','duration_ms']
+    deciles_features_list = ['danceability', 'energy', 'speechiness','acousticness', 'liveness', 'valence','views']
+    direct_use_features = ['loudness','tempo','duration_ms', 'instrumentalness']
     
     fields = {}
     
@@ -129,6 +130,9 @@ def create_filters_model():
         fields[feature+"_min"] = (int, -100)
         fields[feature+"_max"] = (int, 99999999)
         fields[feature+"_decile_weight"] = (int, 0)
+
+    fields["instrumentalness_min"] = (float, 0.0)
+    fields["instrumentalness_max"] = (float, 1.0)
     
     # Min/max only features
     fields['album_release_year_min'] = (int, 1900)
