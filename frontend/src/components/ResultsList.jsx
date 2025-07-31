@@ -138,64 +138,68 @@ function ResultsList({ results, meta, isViewingSaved, onBookmarkChange, onClearA
     <>
       {/* Meta Information */}
       {(meta || isViewingSaved) && (
-        <div className="mb-8 flex justify-between items-center">
-          <h3 className="text-lg font-medium text-gray-900">
-            {isViewingSaved 
-              ? `Saved ${savedTracks.length} results`
-              : `Found ${meta?.result_count || 0} results`
-            }
-          </h3>
-          
-          {/* Sort Controls - only show if we have results */}
-          {hasResults && (
-            <div className="flex gap-6 items-center">
-              <span className="text-sm text-gray-600">Sort by:</span>
-              <button
-                onClick={() => handleSortChange(isViewingSaved ? 'saved' : 'relevance')}
-                className={`text-sm ${(sortBy === 'relevance' || sortBy === 'saved') ? 'text-teal-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                {isViewingSaved ? 'Saved' : 'Relevance'}
-              </button>
-              <button
-                onClick={() => handleSortChange('latest')}
-                className={`text-sm ${sortBy === 'latest' ? 'text-teal-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Latest
-              </button>
-              <button
-                onClick={() => handleSortChange('popularity')}
-                className={`text-sm ${sortBy === 'popularity' ? 'text-teal-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Popularity
-              </button>
-              
-              {/* Clear All Button - only show for saved tracks */}
-              {isViewingSaved && (
-                <button
-                  onClick={() => {
-                    if (confirm('Are you sure you want to clear all saved tracks?')) {
-                      bookmarkService.clearAllBookmarks()
-                      setSavedTracks([])
-                      if (onBookmarkChange) onBookmarkChange()
-                      // Switch back to search view after clearing
-                      if (onClearAll) onClearAll()
-                    }
-                  }}
-                  className="text-sm text-red-600 hover:text-red-700 font-medium"
-                >
-                  Clear All
-                </button>
-              )}
-            </div>
-          )}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0">
+            <h3 className="text-base sm:text-lg font-medium text-gray-900">
+              {isViewingSaved 
+                ? `Saved ${savedTracks.length} results`
+                : `Found ${meta?.result_count || 0} results`
+              }
+            </h3>
+            
+            {/* Sort Controls - only show if we have results */}
+            {hasResults && (
+              <div className="flex flex-wrap gap-4 sm:gap-6 items-center">
+                <span className="text-xs sm:text-sm text-gray-600">Sort by:</span>
+                <div className="flex gap-4 sm:gap-6">
+                  <button
+                    onClick={() => handleSortChange(isViewingSaved ? 'saved' : 'relevance')}
+                    className={`text-xs sm:text-sm ${(sortBy === 'relevance' || sortBy === 'saved') ? 'text-teal-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {isViewingSaved ? 'Saved' : 'Relevance'}
+                  </button>
+                  <button
+                    onClick={() => handleSortChange('latest')}
+                    className={`text-xs sm:text-sm ${sortBy === 'latest' ? 'text-teal-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Latest
+                  </button>
+                  <button
+                    onClick={() => handleSortChange('popularity')}
+                    className={`text-xs sm:text-sm ${sortBy === 'popularity' ? 'text-teal-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Popularity
+                  </button>
+                  
+                  {/* Clear All Button - only show for saved tracks */}
+                  {isViewingSaved && (
+                    <button
+                      onClick={() => {
+                        if (confirm('Are you sure you want to clear all saved tracks?')) {
+                          bookmarkService.clearAllBookmarks()
+                          setSavedTracks([])
+                          if (onBookmarkChange) onBookmarkChange()
+                          // Switch back to search view after clearing
+                          if (onClearAll) onClearAll()
+                        }
+                      }}
+                      className="text-xs sm:text-sm text-red-600 hover:text-red-700 font-medium"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {/* Empty State */}
       {isEmpty && (
-        <div className="mb-8 p-6 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <h4 className="text-lg font-medium text-yellow-800 mb-2">No results found</h4>
-          <p className="text-yellow-700">
+        <div className="mb-6 sm:mb-8 p-4 sm:p-6 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <h4 className="text-base sm:text-lg font-medium text-yellow-800 mb-2">No results found</h4>
+          <p className="text-sm sm:text-base text-yellow-700">
             Please try widening your search with different criteria, genres, or time periods.
           </p>
         </div>
@@ -203,9 +207,9 @@ function ResultsList({ results, meta, isViewingSaved, onBookmarkChange, onClearA
 
       {/* Results */}
       {hasResults && (
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           {/* Results */}
-          <div className="space-y-4 mb-8">
+          <div className="space-y-3 sm:space-y-4 mb-6 sm:mb-8">
             {paginatedResults.map((track, index) => (
               <TrackView 
                 key={track.spotify_track_id || index} 
@@ -222,15 +226,15 @@ function ResultsList({ results, meta, isViewingSaved, onBookmarkChange, onClearA
 
           {/* Pagination - Left Aligned */}
           {totalPages > 1 && (
-            <div className="flex gap-4">
+            <div className="flex gap-3 sm:gap-4 flex-wrap">
               {getPageNumbers().map((pageNum, index) => (
                 <span key={index}>
                   {pageNum === '...' ? (
-                    <span className="text-gray-400">...</span>
+                    <span className="text-gray-400 text-xs sm:text-sm">...</span>
                   ) : (
                     <button
                       onClick={() => setCurrentPage(pageNum)}
-                      className={`text-sm ${
+                      className={`text-xs sm:text-sm min-h-[32px] px-2 ${
                         currentPage === pageNum
                           ? 'text-teal-600 font-medium'
                           : 'text-gray-500 hover:text-gray-700'

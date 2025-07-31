@@ -72,7 +72,8 @@ class LLMService:
         
         text = f"Refine your previous JSON to better match the user intent.\n"
         text += f"Aim to have between {TARGET_MIN} and {TARGET_MAX} results. Inspect the top 10 results to ensure they are relevant and also of high quality.\n"
-        text += f"Adjust your criteria as needed to reach this target while maintaining quality and relevance. You may need to broaden or narrow filters depending on the current result count.\n\n"
+        text += f"Adjust your criteria as needed to reach this target while maintaining quality and relevance. You may need to broaden or narrow filters depending on the current result count.\n"
+        text += f"If your result count is under 10, or if almost all example results are obviously not relevant, make drastic changes to your filters. If results are in the 10-50 range but are relevant and high quality, only make slight alterations.\n\n"
         text += f"Original user query: {original_query}\n"
         
         if user_feedback:
@@ -88,29 +89,34 @@ class LLMService:
         """Return the system instruction for the LLM"""
         return """
 Your task is to convert a user query to a set of filters we can use to query a music database. 
-The database has about 18,000 tracks. Aim to design filters that will return a result set of about 50-150 tracks, as long as they are relevant to the user's query.
-For each user query, you will have 3 attempts to refine the results. Start by setting broad filters and then refine them as needed. 
+The database has about 18,000 tracks.
+Your top priority is to return results that are relevant to the user's query.
+Your second priority is to return results that are high quality.
+Your third priority, is to return a result set of about 50-150 tracks.
+For each user query, you will have up to 3 attempts to refine the results. Start by setting broad filters and then refine or expand them as needed. 
 
-Below is a list of features we can use to filter as well as to create a relevance score. Note many of these are correlated. 
+Below is a list of features we can use to filter the dataset, as well as to create a relevance score.
+Many of these are correlated. 
+Especially at first, try not to use more than 1 filter to capture one aspect of the user's query. 
 
 For the following features, you can create min/max filters and also a weight for relevance scoring.
 danceability_decile: Danceability describes how suitable a track is for dancing. The higher the number the higher the dancability. Converted to deciles (1-10).
-speechiness_decile: Speechiness detects the presence of spoken words in a track. The more exclusively speech-like the recording (e.g. talk show, audio book, poetry), the higher the attribute value. Converted to deciles (1-10).
+speechiness_decile: do not use this field unless the user explicitly asks for it. Speechiness detects the presence of spoken words in a track. The more exclusively speech-like the recording (e.g. talk show, audio book, poetry), the higher the attribute value. Converted to deciles (1-10).
 energy_decile: represents a perceptual measure of intensity and activity. Typically, energetic tracks feel fast, loud, and noisy. For example, death metal has high energy, while a Bach prelude scores low on the scale. Converted to deciles (1-10).
 acousticness_decile: A confidence measure of whether the track is acoustic. The higher the number the higher the confidence. Converted to deciles (1-10).
-instrumentalness_decile: Predicts whether a track contains no vocals. "Ooh" and "aah" sounds are treated as instrumental in this context. Rap or spoken word tracks are clearly "vocal". The higher the instrumentalness value is, the greater likelihood the track contains no vocal content. Deciles are not balanced and start at 5 for definitely vocal tracks, max is 10. 
 liveness_decile: Detects the presence of an audience in the recording. Higher liveness values represent an increased probability that the track was performed live. Converted to deciles (1-10).
 valence_decile: A measure describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry). Converted to deciles (1-10).
 views_decile: the number of YouTube views the music has. Converted to deciles (1-10).
-tempo: The overall estimated tempo of a track in beats per minute (BPM). Consider BPMs under 60 ultra slow and hard to detect a beat. 60-90 are slow with a beat detectable. 90-120 are mid tempo/pop. 120-140 are fast and upbeat. 140 and above is very fast. Min/max filters are not applied against deciles but againt the raw value. The score weight will be multiplied by the decile.
-loudness: The overall loudness of a track in decibels (dB). Loudness values are averaged across the entire track and are useful for comparing relative loudness of tracks. Note that overall loudness is normalized across tracks on Spotify, so only use this in extreme scenarios. Min/max filters are not applied against deciles but againt the raw value. The score weight will be multiplied by the decile.
+tempo: The overall estimated tempo of a track in beats per minute (BPM). Use 100 BPM or less for slow music. <80 BPM is very slow (6.5% of tracks), 80-120 BPM is moderate (44%), >120 BPM is fast (49.5%). Min/max filters are not applied against deciles but againt the raw value. The score weight will be multiplied by the decile.
+loudness: The overall loudness of a track in decibels (dB). Loudness values are averaged across the entire track and are useful for comparing relative loudness of tracks. Note that overall loudness is normalized across tracks on Spotify, so only use this in extreme scenarios. Spotify normalizes to -60 to 0 dB. Use -15 to -5 dB for quiet background music, -10 to -5 dB for normal listening, above -5 dB for loud music. Almost no tracks are below -20 dB. Min/max filters are not applied against deciles but againt the raw value. The score weight will be multiplied by the decile.
 duration_ms: the duration of the track in milliseconds. Always ensure to provide at least 3 seconds of a range if you use this filter. Min/max filters are not applied against deciles but againt the raw value. The score weight will be multiplied by the decile.
+instrumentalness: A float between 0 and 1 predicting whether a track contains no vocals. "Ooh" and "aah" sounds are treated as instrumental in this context. Rap or spoken word tracks are clearly "vocal". The closer the instrumentalness value is to 1.0, the greater likelihood the track contains no vocal content. Values above 0.5 are intended to represent instrumental tracks, but confidence is higher as the value approaches 1.0. 44% of the tracks are 0. Only 5% of tracks are above 0.5.
 
 For the following features, you can only create mix/max filters:
-album_release_year: the year the track was released in, represented as an integer. This is the year the recording was made, do not rely on this for classical music or any music from before 1950. 
+album_release_year: the year the track was released in, represented as an integer. This is the year the recording was made, not the year a classical composition was written. 
 track_is_explicit: this is 0 for tracks without explicit language and 1 for tracks marked as explicit language. 
 
-For 60% of tracks, we were also able to pull the artist's genres into a comma separated list field. You can use these to create filters and scoring against that field. Note that any filtering will only apply to the 60% of tracks that have genres. Only use this field if the user gives a clear indication of style or genre required. 
+For 60% of tracks, we were also able to pull the artist's genres into a comma separated list field. You can use these to create filters and scoring against that field. Note that any filtering will only apply to the 60% of tracks that have genres.
 Values you can choose and are common are: pop, rock, r&b, hip hop, rap, edm, house, reggaeton, latin, country, k-pop, bollywood, metal, disco, orchestra, classical.
 Values you can choose that are more rare: ambient, soundtrack, lo-fi, drum and bass, christmas, children, anime, emo, piano. Use these sparingly. 
 There are a lot more genres but they are even more rare. Only use a genre outside the list above if the user explicitly asks for it. 

@@ -159,6 +159,7 @@ export function useSearch() {
     error,
     loadingStep,
     chatHistory,
-    userResponseCount
+    userResponseCount,
+    conversationHistory
   }
 }

@@ -4,6 +4,7 @@ import ResultsList from './components/ResultsList'
 import ChatHistory from './components/ChatHistory'
 import LoadingMessage from './components/LoadingMessage'
 import FloatingActionButton from './components/FloatingActionButton'
+import Examples from './components/Examples'
 import { useSearch } from './hooks/useSearch'
 import { bookmarkService } from './services/bookmarkService'
 
@@ -13,7 +14,7 @@ function App() {
   const [bookmarkCount, setBookmarkCount] = useState(0)
   const [bookmarkKey, setBookmarkKey] = useState(0)
   const [hasStartedSession, setHasStartedSession] = useState(false)
-  const { startSearch, resetSession, results, meta, isLoading, error, loadingStep, chatHistory, userResponseCount } = useSearch()
+  const { startSearch, resetSession, results, meta, isLoading, error, loadingStep, chatHistory, userResponseCount, conversationHistory } = useSearch()
   
   const hasResults = results && results.length > 0
   const hasSearched = meta !== null
@@ -28,10 +29,14 @@ function App() {
     updateBookmarkCount()
   }, [])
 
-  // Handle new search - clear bookmarks, reset session, and return to search view
+  // Handle new search - clear bookmarks for initial search, keep for refinements
   const handleNewSearch = (queryText) => {
-    bookmarkService.clearBookmarksOnNewQuery()
-    setBookmarkCount(0)
+    // Clear bookmarks only if this is an initial search (no chat history)
+    if (chatHistory.length === 0) {
+      bookmarkService.clearBookmarksOnNewQuery()
+      setBookmarkCount(0)
+      setBookmarkKey(prev => prev + 1)
+    }
     setIsViewingSaved(false)
     setHasStartedSession(true) // Mark that user has started a session
     resetSession()
@@ -43,28 +48,36 @@ function App() {
     setIsViewingSaved(!isViewingSaved)
   }
   return (
-    <div className="min-h-screen bg-light-cream font-sans">
+    <div className="min-h-screen w-full bg-light-cream font-sans">
+      <div className="pt-4 px-4 sm:pt-8 sm:pl-12">
+        <span className="inline-block px-2 py-1 text-xs sm:px-3 sm:text-sm font-medium text-red-700 bg-red-100 rounded-full">
+          Demo Version
+        </span>
+      </div>
       {/* Header */}
-      <header className="pt-12 pl-12 pb-6">
-        <h1 className="text-2xl font-medium text-gray-900 mb-2">
+      <header className="pt-4 px-4 pb-4 sm:pt-6 sm:pl-12 sm:pb-6">
+        <h1 className="text-xl sm:text-2xl font-medium text-gray-900 mb-2">
           What type of music are you looking for?
         </h1>
-        <p className="text-gray-600">
+        <p className="text-sm sm:text-base text-gray-600">
           I can help you find music based on your mood, vibe, duration, era, genre, and more. Just tell me what you're looking for!
         </p>
       </header>
 
       {/* Main Content */}
-      <main className="pl-12 pr-12">
-        <div className="max-w-4xl">
+      <main className="px-4 pb-16 sm:pl-12 sm:pr-12 sm:pb-24">
+        <div className="w-full max-w-4xl">
           {/* Show search form if no conversation started or after results are shown */}
           {chatHistory.length === 0 && !isViewingSaved && (
-            <SearchForm 
-              query={query}
-              setQuery={setQuery}
-              onSubmit={handleNewSearch}
-              isLoading={isLoading}
-            />
+            <>
+              <SearchForm 
+                query={query}
+                setQuery={setQuery}
+                onSubmit={handleNewSearch}
+                isLoading={isLoading}
+              />
+              <Examples query={query} setQuery={setQuery} />
+            </>
           )}
 
           {/* Error Display */}
@@ -92,6 +105,7 @@ function App() {
               chatHistory={chatHistory}
               isLoading={isLoading}
               loadingStep={loadingStep}
+              conversationHistory={conversationHistory}
             />
           )}
 
