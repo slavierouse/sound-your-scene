@@ -102,6 +102,7 @@ function ChatHistory({ chatHistory, isLoading, loadingStep, conversationHistory 
               isUser={message.isUser}
               chainOfThoughtSteps={chainOfThoughtSteps}
               isLoading={isLoading}
+              imageData={message.imageData}
             />
           )
         })}

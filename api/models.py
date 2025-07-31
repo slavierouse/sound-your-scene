@@ -14,6 +14,7 @@ class JobStatus(str, Enum):
 class SearchRequest(BaseModel):
     query_text: str
     conversation_history: Optional['ConversationHistory'] = None
+    image_data: Optional[str] = None  # Base64 encoded image data
 
 class RefineRequest(BaseModel):
     job_id: str
@@ -31,6 +32,7 @@ class RefinementStep(BaseModel):
     result_summary: Optional[Dict[str, Any]] = None  # summary for next refinement
     timestamp: datetime
     target_range: Optional[str] = None  # e.g. "50-150 results"
+    image_data: Optional[str] = None  # Base64 encoded image data for this step
 
 class ConversationHistory(BaseModel):
     original_query: str
@@ -58,7 +60,7 @@ class TrackResult(BaseModel):
     # Audio features (deciles)
     danceability_decile: int
     energy_decile: int
-    speechiness_decile: int
+    #speechiness_decile: int
     acousticness_decile: int
     instrumentalness_decile: int
     liveness_decile: int
@@ -114,7 +116,7 @@ class JobData(BaseModel):
 # Dynamic filters model - recreated from notebook logic
 def create_filters_model():
     """Create the dynamic Pydantic model for LLM filters"""
-    deciles_features_list = ['danceability', 'energy', 'speechiness','acousticness', 'liveness', 'valence','views']
+    deciles_features_list = ['danceability', 'energy','acousticness', 'liveness', 'valence','views'] #'speechiness'
     direct_use_features = ['loudness','tempo','duration_ms', 'instrumentalness']
     
     fields = {}
@@ -154,3 +156,10 @@ def create_filters_model():
 
 # Create the filters model
 FiltersModel = create_filters_model()
+
+# Image upload response model
+class ImageUploadResponse(BaseModel):
+    success: bool
+    temp_file_id: str
+    base64_data: str
+    message: str
