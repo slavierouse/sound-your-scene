@@ -49,7 +49,10 @@ function App() {
   }
   return (
     <div className="min-h-screen w-full bg-light-cream font-sans">
-      <div className="pt-4 px-4 sm:pt-8 sm:pl-12">
+      <div className="pt-4 px-4 sm:pt-8 sm:pl-12 flex items-center">
+        <span className="text-sm sm:text-base font-medium text-gray-700 mr-4">
+          Sound your scene
+        </span>
         <span className="inline-block px-2 py-1 text-xs sm:px-3 sm:text-sm font-medium text-red-700 bg-red-100 rounded-full">
           Demo Version
         </span>
