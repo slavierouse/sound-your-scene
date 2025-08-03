@@ -57,6 +57,18 @@ function App() {
     setImageData(null)
   }
 
+  // Handle example selection with image
+  const handleExampleSelected = (queryText, exampleImageData) => {
+    setQuery(queryText)
+    if (exampleImageData) {
+      // Clean up any existing image data
+      if (imageData?.previewUrl && imageData.previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(imageData.previewUrl)
+      }
+      setImageData(exampleImageData)
+    }
+  }
+
   // Handle toggle between search and saved view
   const handleToggleView = () => {
     setIsViewingSaved(!isViewingSaved)
@@ -97,7 +109,11 @@ function App() {
                 onImageRemoved={handleImageRemoved}
                 isInitialSearch={true}
               />
-              <Examples query={query} setQuery={setQuery} />
+              <Examples 
+                query={query} 
+                setQuery={setQuery} 
+                onExampleSelected={handleExampleSelected}
+              />
             </>
           )}
 

@@ -137,6 +137,7 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, max_iters:
     """Run auto-refinement with detailed step tracking"""
     TARGET_MIN, TARGET_MAX = 50, 150
     target_range = f"{TARGET_MIN}-{TARGET_MAX}"
+    MAX_ITERATIONS = max_iters  # Total iterations including initial
     
     # Step 1: Initial search
     initial_prompt = llm_service.create_initial_prompt(user_query, has_image=bool(image_data))
@@ -162,18 +163,21 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, max_iters:
     current_filters = filters_json
     current_results = results_df
     
-    # Auto-refinement iterations
+    # Auto-refinement iterations - always do at least 1 refinement for quality
     for i in range(max_iters - 1):
         count = len(current_results)
         
-        if TARGET_MIN <= count <= TARGET_MAX:
+        # Only stop if we're in target range AND we've done at least 1 refinement
+        if TARGET_MIN <= count <= TARGET_MAX and i > 0:
             break
 
         # Create refinement prompt
         refine_prompt = llm_service.create_refine_prompt(
             original_query=user_query,
             previous_filters=current_filters,
-            result_summary=summary
+            result_summary=summary,
+            current_step=i+1,
+            max_steps=MAX_ITERATIONS
         )
         
         # Get refined filters
@@ -231,7 +235,9 @@ async def run_user_refinement(job_id: str, user_feedback: str, conversation_hist
         conversation_history.original_query,
         latest_step.filters_json,
         latest_step.result_summary or {},
-        user_feedback
+        user_feedback,
+        current_step=1,  # User refinement is always step 1 of a new refinement cycle
+        max_steps=3
     )
     
     # Get refined filters from LLM
@@ -288,7 +294,9 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
         conversation_history.original_query,
         latest_step.filters_json,
         latest_step.result_summary or {},
-        user_feedback
+        user_feedback,
+        current_step=1,  # User refinement is always step 1 of a new refinement cycle
+        max_steps=3
     )
     
     # Get initial refined filters from LLM
@@ -328,8 +336,8 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
         count = len(current_results)
         TARGET_MIN, TARGET_MAX = 50, 150
         
-        # Stop if we're in a good range
-        if TARGET_MIN <= count <= TARGET_MAX:
+        # Stop if we're in a good range AND we've done at least 1 refinement
+        if TARGET_MIN <= count <= TARGET_MAX and i > 0:
             break
         
         # Create refinement prompt
@@ -338,7 +346,9 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
             conversation_history.original_query,
             current_filters,
             summary,
-            f"Auto-refine iteration {i+1} to reach {target_range} (current: {count})"
+            f"Auto-refine iteration {i+1} to reach {target_range} (current: {count})",
+            current_step=i+2,  # i+2 because this is after the initial user refinement (step 1)
+            max_steps=MAX_ITERATIONS+1  # +1 because we have initial user refinement + MAX_ITERATIONS auto-refines
         )
         
         # Get refined filters

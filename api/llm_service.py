@@ -123,6 +123,7 @@ class LLMService:
         text += f"Refine your previous JSON to better match the user intent.\n"
         text += f"Aim to have between {TARGET_MIN} and {TARGET_MAX} results. Inspect the top 10 results to ensure they are relevant and also of high quality.\n"
         text += f"Adjust your criteria as needed to reach this target while maintaining quality and relevance. You may need to broaden or narrow filters depending on the current result count.\n"
+        text += f"Never strictly narrow results if you are below {TARGET_MIN}. If you need to make something more restrictive for relevance, broaden other filters to compensate.\n"
         
         # Adjust guidance based on which step we're on
         if current_step == max_steps:

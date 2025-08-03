@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { loadExampleImage, getImageKeyForExample } from '../utils/imageLoader'
 
 const examples = [
   {
@@ -19,7 +20,7 @@ const examples = [
   {
     emoji: '🧛',
     shorthand: 'Brooding electro',
-    query: 'Extremely negative, brooding, unhappy electronic music'
+    query: 'Brooding and unhappy electronic music'
   },
   {
     emoji: '🎅',
@@ -28,8 +29,9 @@ const examples = [
   }
 ]
 
-function Examples({ query, setQuery }) {
+function Examples({ query, setQuery, onExampleSelected }) {
   const [activeTab, setActiveTab] = useState(null)
+  const [loadingImage, setLoadingImage] = useState(null)
 
   // Check if current query matches any example
   useEffect(() => {
@@ -37,9 +39,25 @@ function Examples({ query, setQuery }) {
     setActiveTab(matchingIndex >= 0 ? matchingIndex : null)
   }, [query])
 
-  const handleTabClick = (index) => {
+  const handleTabClick = async (index) => {
     setActiveTab(index)
     setQuery(examples[index].query)
+    
+    // Load the corresponding image
+    const imageKey = getImageKeyForExample(index)
+    if (imageKey && onExampleSelected) {
+      setLoadingImage(index)
+      try {
+        const imageData = await loadExampleImage(imageKey)
+        onExampleSelected(examples[index].query, imageData)
+      } catch (error) {
+        console.error('Failed to load example image:', error)
+        // Still call onExampleSelected but without image data
+        onExampleSelected(examples[index].query, null)
+      } finally {
+        setLoadingImage(null)
+      }
+    }
   }
 
   return (
@@ -54,15 +72,18 @@ function Examples({ query, setQuery }) {
             <button
               key={index}
               onClick={() => handleTabClick(index)}
+              disabled={loadingImage === index}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-sm ${
                 activeTab === index
                   ? 'bg-teal-50 border-teal-300 text-teal-700'
                   : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
-              }`}
+              } ${loadingImage === index ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <span className="text-base">{example.emoji}</span>
               <div className="w-px h-3 bg-gray-300"></div>
-              <span className="font-medium">{example.shorthand}</span>
+              <span className="font-medium">
+                {loadingImage === index ? 'Loading...' : example.shorthand}
+              </span>
             </button>
           ))}
         </div>
