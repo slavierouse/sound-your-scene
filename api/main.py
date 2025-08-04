@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
 from api.models import SearchRequest, JobResponse, ImageUploadResponse
 from api.search_service import create_search_job, get_job_status, initialize_services
 from api.image_service import image_service
+from api.database import get_db
 
 from dotenv import load_dotenv
 load_dotenv('.env', override=True)
@@ -29,9 +31,17 @@ async def root():
     return {"message": "SoundByMood API", "status": "running"}
 
 @app.post("/search")
-async def create_search(request: SearchRequest, background_tasks: BackgroundTasks):
+async def create_search(
+    search_request: SearchRequest, 
+    background_tasks: BackgroundTasks,
+    request: Request,
+    db: Session = Depends(get_db)
+):
     """Create a new search job and process it in the background"""
-    return await create_search_job(request, background_tasks)
+    # Get client IP for user session tracking
+    client_ip = request.client.host if request.client else None
+    
+    return await create_search_job(search_request, background_tasks, db, client_ip)
 
 @app.get("/jobs/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str):

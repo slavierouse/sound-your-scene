@@ -15,7 +15,15 @@ function App() {
   const [bookmarkCount, setBookmarkCount] = useState(0)
   const [bookmarkKey, setBookmarkKey] = useState(0)
   const [hasStartedSession, setHasStartedSession] = useState(false)
-  const { startSearch, resetSession, results, meta, isLoading, error, loadingStep, chatHistory, userResponseCount, conversationHistory } = useSearch()
+  
+  // Session state management for database persistence and A/B testing
+  const [sessionData, setSessionData] = useState({
+    userSessionId: null,
+    searchSessionId: null,
+    model: null
+  })
+  
+  const { startSearch, resetSession, results, meta, isLoading, error, loadingStep, chatHistory, userResponseCount, conversationHistory } = useSearch(sessionData, setSessionData)
   
   const hasResults = results && results.length > 0
   const hasSearched = meta !== null

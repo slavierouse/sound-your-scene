@@ -15,6 +15,9 @@ class SearchRequest(BaseModel):
     query_text: str
     conversation_history: Optional['ConversationHistory'] = None
     image_data: Optional[str] = None  # Base64 encoded image data
+    user_session_id: Optional[str] = None  # Frontend session tracking (optional/fallible)
+    search_session_id: Optional[str] = None  # Search conversation tracking (optional/fallible)
+    model: Optional[str] = None  # Model for refinements (frontend passes back)
 
 class RefineRequest(BaseModel):
     job_id: str
@@ -95,6 +98,8 @@ class JobResponse(BaseModel):
     started_at: datetime
     finished_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    user_session_id: Optional[str] = None  # For frontend session tracking
+    model: Optional[str] = None  # Model used for A/B testing
     
     # When job is done
     results: Optional[SearchResults] = None
@@ -107,6 +112,7 @@ class JobData(BaseModel):
     started_at: datetime
     finished_at: Optional[datetime]
     error_message: Optional[str]
+    model: Optional[str] = None  # Model used for A/B testing
     
     # Conversation and processing state
     conversation_history: Optional[ConversationHistory]

@@ -20,7 +20,7 @@ class LLMService:
         
         self.client = genai.Client(api_key=GOOGLE_API_KEY)
     
-    async def query_llm(self, prompt: str, conversation_history: Optional[ConversationHistory] = None, image_data: Optional[str] = None) -> Dict[str, Any]:
+    async def query_llm(self, prompt: str, conversation_history: Optional[ConversationHistory] = None, image_data: Optional[str] = None, model: str = "gemini-2.5-flash") -> Dict[str, Any]:
         """Send a query to the LLM and return the parsed JSON response"""
         if not self.client:
             raise RuntimeError("LLM client not initialized")
@@ -85,7 +85,7 @@ class LLMService:
         # Run the synchronous LLM call in a thread pool
         response = await asyncio.to_thread(
             self.client.models.generate_content,
-            model="gemini-2.5-flash",
+            model=model,
             contents=contents,
             config=cfg
         )

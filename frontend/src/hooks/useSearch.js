@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { apiService } from '../services/apiService'
 
-export function useSearch() {
+export function useSearch(sessionData, setSessionData) {
   const [jobId, setJobId] = useState(null)
   const [results, setResults] = useState(null)
   const [meta, setMeta] = useState(null)
@@ -37,8 +37,32 @@ export function useSearch() {
     }])
 
     try {
-      const data = await apiService.createSearch(queryText, conversationHistory, imageData?.base64Data)
+      const data = await apiService.createSearch(queryText, conversationHistory, imageData?.base64Data, sessionData)
       setJobId(data.job_id)
+      
+      // Update session data with response
+      const isNewSearch = !conversationHistory
+      if (isNewSearch) {
+        // New search: update all session fields
+        setSessionData({
+          userSessionId: data.user_session_id,
+          searchSessionId: data.search_session_id,
+          model: data.model
+        })
+      } else {
+        // Refinement: session fields should stay the same (backend returns same values)
+        // Only update if backend actually changed something (shouldn't happen)
+        if (data.user_session_id !== sessionData.userSessionId || 
+            data.search_session_id !== sessionData.searchSessionId || 
+            data.model !== sessionData.model) {
+          console.warn('Session data changed unexpectedly on refinement:', data)
+          setSessionData({
+            userSessionId: data.user_session_id,
+            searchSessionId: data.search_session_id,
+            model: data.model
+          })
+        }
+      }
     } catch (err) {
       setError(err.message)
       setIsLoading(false)

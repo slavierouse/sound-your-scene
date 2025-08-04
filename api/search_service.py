@@ -1,7 +1,9 @@
 import uuid
+import random
 from datetime import datetime
 from fastapi import HTTPException, BackgroundTasks
 from typing import Dict, Any, Optional
+from sqlalchemy.orm import Session
 
 from api.models import (
     SearchRequest, JobResponse, JobData, JobStatus, 
@@ -10,6 +12,7 @@ from api.models import (
 from api.llm_service import LLMService
 from api.music_service import MusicService
 from api.storage import store_job, get_job, store_results, get_results, job_exists
+from api.session_service import SessionService
 
 # Service instances
 llm_service = LLMService()
@@ -20,17 +23,34 @@ def initialize_services():
     llm_service.initialize()
     music_service.initialize()
 
-async def create_search_job(request: SearchRequest, background_tasks: BackgroundTasks) -> Dict[str, str]:
+def assign_model_for_ab_test(search_session_id: str) -> str:
+    """Assign model for A/B testing based on search session ID for consistency across turns"""
+    # Use search_session_id as seed for consistent assignment per search conversation
+    random.seed(search_session_id)
+    
+    # 50/50 split: gemini-2.5-flash vs gemini-2.5-pro
+    if random.random() < 0.5:
+        return "gemini-2.5-pro"
+    else:
+        return "gemini-2.5-flash"
+
+async def create_search_job(request: SearchRequest, background_tasks: BackgroundTasks, db: Session = None, client_ip: str = None) -> Dict[str, str]:
     """Create a new search job and start background processing"""
     job_id = str(uuid.uuid4())
     
-    # Create job entry with fallback for conversation history
+    # LAYER 1: Generate IDs and assignments with fallbacks (consistent pattern)
+    user_session_id = request.user_session_id or str(uuid.uuid4())
+    search_session_id = request.search_session_id or str(uuid.uuid4())
+    assigned_model = request.model or ("gemini-2.5-pro" if random.random() < 0.5 else "gemini-2.5-flash")
+    
+    # LAYER 2: Existing in-memory job processing (preserve working functionality)
     job_data = JobData(
         status=JobStatus.QUEUED,
         query_text=request.query_text,
         started_at=datetime.now(),
         finished_at=None,
         error_message=None,
+        model=assigned_model,
         conversation_history=request.conversation_history if request.conversation_history else None,
         current_filters_json=None,
         result_count=None
@@ -38,7 +58,7 @@ async def create_search_job(request: SearchRequest, background_tasks: Background
     
     store_job(job_id, job_data)
     
-    # Start background processing with fallback
+    # LAYER 2: Core search processing (existing working logic)
     background_tasks.add_task(
         process_search_job, 
         job_id, 
@@ -47,34 +67,168 @@ async def create_search_job(request: SearchRequest, background_tasks: Background
         request.image_data
     )
     
-    return {"job_id": job_id}
-
-async def get_job_status(job_id: str) -> JobResponse:
-    """Get the status and results of a search job"""
-    if not job_exists(job_id):
-        raise HTTPException(status_code=404, detail="Job not found")
-    
-    job_data = get_job(job_id)
-    
-    # Build base response
-    response = JobResponse(
-        job_id=job_id,
-        status=job_data.status,
-        query_text=job_data.query_text,
-        result_count=job_data.result_count,
-        started_at=job_data.started_at,
-        finished_at=job_data.finished_at,
-        error_message=job_data.error_message,
-        conversation_history=job_data.conversation_history
+    # LAYER 3: Database persistence (runs in parallel, captures all attempts)
+    background_tasks.add_task(
+        async_persist_session_data,
+        user_session_id,
+        job_id,
+        request.query_text,
+        request.conversation_history,
+        bool(request.image_data),
+        client_ip,
+        assigned_model,
+        search_session_id
     )
     
-    # Add results if job is complete
-    if job_data.status == JobStatus.DONE:
-        results = get_results(job_id)
-        if results:
-            response.results = results
+    # Return immediately - no database blocking
+    return {
+        "job_id": job_id,
+        "user_session_id": user_session_id,
+        "search_session_id": search_session_id,
+        "model": assigned_model
+    }
+
+async def get_job_status(job_id: str) -> JobResponse:
+    """Get the status and results of a search job with database fallback"""
     
-    return response
+    # Try in-memory stores first (for active jobs)
+    if job_exists(job_id):
+        job_data = get_job(job_id)
+        
+        # Build base response
+        response = JobResponse(
+            job_id=job_id,
+            status=job_data.status,
+            query_text=job_data.query_text,
+            result_count=job_data.result_count,
+            started_at=job_data.started_at,
+            finished_at=job_data.finished_at,
+            error_message=job_data.error_message,
+            conversation_history=job_data.conversation_history,
+            model=job_data.model
+        )
+        
+        # Add results if job is complete
+        if job_data.status == JobStatus.DONE:
+            results = get_results(job_id)
+            if results:
+                response.results = results
+        
+        return response
+    
+    # Fallback: Check database (for completed jobs after server restart)
+    try:
+        return await get_job_status_from_database(job_id)
+    except Exception as e:
+        print(f"Database fallback failed for job_id {job_id}: {e}")
+        raise HTTPException(status_code=404, detail="Job not found")
+
+async def get_job_status_from_database(job_id: str) -> JobResponse:
+    """Reconstruct job status from database (fallback for server restarts)"""
+    from api.database import SessionLocal
+    from api.db_models import SearchJob, SearchResult
+    from api.models import SearchResults, TrackResult, ConversationHistory, RefinementStep
+    
+    db = SessionLocal()
+    try:
+        # Get search job record
+        search_job = db.query(SearchJob).filter_by(job_id=job_id).first()
+        if not search_job:
+            raise HTTPException(status_code=404, detail="Job not found in database")
+        
+        # Reconstruct conversation history from all jobs in the same search session
+        all_jobs = db.query(SearchJob).filter_by(
+            search_session_id=search_job.search_session_id
+        ).order_by(SearchJob.conversation_turn).all()
+        
+        conversation_history = None
+        if all_jobs:
+            steps = []
+            for job in all_jobs:
+                if job.llm_message:  # Only include completed jobs
+                    step = RefinementStep(
+                        step_number=job.conversation_turn,
+                        step_type="initial" if job.conversation_turn == 1 else "user_refine",
+                        user_input=job.query_text,
+                        filters_json=job.filters_json or {},
+                        result_count=job.result_count or 0,
+                        user_message=job.llm_message,
+                        rationale=job.llm_reflection or "",
+                        result_summary={},
+                        timestamp=job.created_at,
+                        target_range="50-150 results",
+                        image_data=None
+                    )
+                    steps.append(step)
+            
+            if steps:
+                conversation_history = ConversationHistory(
+                    original_query=all_jobs[0].query_text,
+                    steps=steps,
+                    current_step=len(steps),
+                    total_auto_refinements=0  # We don't track this in DB
+                )
+        
+        # Build base response from database record
+        response = JobResponse(
+            job_id=job_id,
+            status=JobStatus.DONE if search_job.completed_at else JobStatus.RUNNING,
+            query_text=search_job.query_text,
+            result_count=search_job.result_count,
+            started_at=search_job.created_at,
+            finished_at=search_job.completed_at,
+            error_message=None,
+            conversation_history=conversation_history,
+            model=search_job.model_used
+        )
+        
+        # If this specific job is completed and has results, get them
+        if search_job.completed_at and search_job.result_count and search_job.result_count > 0:
+            search_results = db.query(SearchResult).filter_by(
+                job_id=job_id
+            ).order_by(SearchResult.rank_position).limit(150).all()
+            
+            if search_results:
+                # For fallback, create simplified track results with just the stored data
+                tracks = []
+                for result in search_results:
+                    track = TrackResult(
+                        spotify_track_id=result.spotify_track_id,
+                        track="[Track data not available - server restart]",
+                        artist="[Artist data not available - server restart]", 
+                        album_release_year=2000,
+                        spotify_artist_genres="",
+                        track_is_explicit=False,
+                        duration_ms=180000,
+                        url_youtube=None,
+                        spotify_url=f"https://open.spotify.com/track/{result.spotify_track_id}",
+                        danceability_decile=5,
+                        energy_decile=5,
+                        acousticness_decile=5,
+                        liveness_decile=5,
+                        valence_decile=5,
+                        views_decile=5,
+                        tempo=120.0,
+                        loudness=-10.0,
+                        duration_ms_value=180000,
+                        instrumentalness=0.0,
+                        relevance_score=float(result.relevance_score) if result.relevance_score else 0.0
+                    )
+                    tracks.append(track)
+                
+                results = SearchResults(
+                    job_id=job_id,
+                    llm_message=search_job.llm_message or "Results retrieved from database after server restart",
+                    llm_reflection=search_job.llm_reflection or "",
+                    result_count=len(tracks),
+                    tracks=tracks
+                )
+                response.results = results
+        
+        return response
+        
+    finally:
+        db.close()
 
 async def process_search_job(job_id: str, query_text: str, existing_conversation_history: Optional[ConversationHistory] = None, image_data: Optional[str] = None):
     """Process a search job with auto-refinement tracking"""
@@ -82,6 +236,9 @@ async def process_search_job(job_id: str, query_text: str, existing_conversation
         # Update job status to running
         job_data = get_job(job_id)
         job_data.status = JobStatus.RUNNING
+        
+        # Get the assigned model for this job
+        assigned_model = job_data.model or "gemini-2.5-flash"
         
         # Initialize or use existing conversation history
         if existing_conversation_history:
@@ -107,10 +264,10 @@ async def process_search_job(job_id: str, query_text: str, existing_conversation
         
         if is_refinement:
             # This is a user refinement - still run full auto-refinement process
-            filters_json, final_results_df = await run_user_refinement_with_auto_refine(job_id, query_text, conversation_history)
+            filters_json, final_results_df = await run_user_refinement_with_auto_refine(job_id, query_text, conversation_history, assigned_model)
         else:
             # This is initial search - run normal auto-refinement process
-            filters_json, final_results_df = await run_auto_refine_with_tracking(job_id, query_text, image_data=image_data)
+            filters_json, final_results_df = await run_auto_refine_with_tracking(job_id, query_text, assigned_model, image_data=image_data)
         
         # Convert results to API format
         api_results = music_service.convert_to_api_results(final_results_df, filters_json, job_id)
@@ -125,6 +282,10 @@ async def process_search_job(job_id: str, query_text: str, existing_conversation
         store_job(job_id, job_data)
         store_results(job_id, api_results)
         
+        # LAYER 3: Update database with search job completion (runs after job is DONE)
+        import asyncio
+        asyncio.create_task(async_update_search_job_completion(job_id, filters_json, final_results_df))
+        
     except Exception as e:
         # Update job with error
         job_data = get_job(job_id)
@@ -133,7 +294,7 @@ async def process_search_job(job_id: str, query_text: str, existing_conversation
         job_data.error_message = str(e)
         store_job(job_id, job_data)
 
-async def run_auto_refine_with_tracking(job_id: str, user_query: str, max_iters: int = 3, image_data: Optional[str] = None):
+async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_model: str, max_iters: int = 3, image_data: Optional[str] = None):
     """Run auto-refinement with detailed step tracking"""
     TARGET_MIN, TARGET_MAX = 50, 150
     target_range = f"{TARGET_MIN}-{TARGET_MAX}"
@@ -141,7 +302,7 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, max_iters:
     
     # Step 1: Initial search
     initial_prompt = llm_service.create_initial_prompt(user_query, has_image=bool(image_data))
-    filters_json = await llm_service.query_llm(initial_prompt, image_data=image_data)
+    filters_json = await llm_service.query_llm(initial_prompt, image_data=image_data, model=assigned_model)
     
     # Get initial results
     search_result = music_service.search(filters_json)
@@ -181,7 +342,7 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, max_iters:
         )
         
         # Get refined filters
-        refined_filters = await llm_service.query_llm(refine_prompt)
+        refined_filters = await llm_service.query_llm(refine_prompt, model=assigned_model)
         
         # Get refined results
         refined_search = music_service.search(refined_filters)
@@ -228,7 +389,9 @@ async def run_user_refinement(job_id: str, user_feedback: str, conversation_hist
     
     if not latest_step:
         # If no previous steps, fall back to initial search
-        return await run_auto_refine_with_tracking(job_id, user_feedback)
+        job_data = get_job(job_id)
+        assigned_model = job_data.model or "gemini-2.5-flash"
+        return await run_auto_refine_with_tracking(job_id, user_feedback, assigned_model)
     
     # Create refine prompt with original query, latest filters, and user feedback
     refine_prompt = llm_service.create_refine_prompt(
@@ -241,7 +404,9 @@ async def run_user_refinement(job_id: str, user_feedback: str, conversation_hist
     )
     
     # Get refined filters from LLM
-    refined_filters = await llm_service.query_llm(refine_prompt, conversation_history)
+    job_data = get_job(job_id)
+    assigned_model = job_data.model or "gemini-2.5-flash"
+    refined_filters = await llm_service.query_llm(refine_prompt, conversation_history, model=assigned_model)
     
     # Search with refined filters
     refined_search = music_service.search(refined_filters)
@@ -280,14 +445,14 @@ async def run_user_refinement(job_id: str, user_feedback: str, conversation_hist
     
     return refined_filters, df_with_scores
 
-async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, conversation_history: ConversationHistory):
+async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, conversation_history: ConversationHistory, assigned_model: str):
     """Handle user refinement with full auto-refinement process"""
     # Get the latest step to understand current state
     latest_step = conversation_history.steps[-1] if conversation_history.steps else None
     
     if not latest_step:
         # If no previous steps, fall back to initial search
-        return await run_auto_refine_with_tracking(job_id, user_feedback)
+        return await run_auto_refine_with_tracking(job_id, user_feedback, assigned_model)
     
     # Step 1: Get initial refinement based on user feedback
     refine_prompt = llm_service.create_refine_prompt(
@@ -300,7 +465,9 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
     )
     
     # Get initial refined filters from LLM
-    initial_filters = await llm_service.query_llm(refine_prompt, conversation_history)
+    job_data = get_job(job_id)
+    assigned_model = job_data.model or "gemini-2.5-flash"
+    initial_filters = await llm_service.query_llm(refine_prompt, conversation_history, model=assigned_model)
     
     # Search with initial refined filters
     initial_search = music_service.search(initial_filters)
@@ -352,7 +519,7 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
         )
         
         # Get refined filters
-        refined_filters = await llm_service.query_llm(refine_prompt, conversation_history)
+        refined_filters = await llm_service.query_llm(refine_prompt, conversation_history, model=assigned_model)
         
         # Get refined results
         refined_search = music_service.search(refined_filters)
@@ -426,3 +593,132 @@ async def add_refinement_step(
     job_data.current_filters_json = filters_json
     
     store_job(job_id, job_data)
+
+async def async_update_search_job_completion(job_id: str, filters_json: Dict[str, Any], final_results_df):
+    """LAYER 3: Update database with search job completion (runs after job is DONE in JOB_STORE)"""
+    try:
+        print(f"DEBUG: Starting completion update for job_id: {job_id}")
+        
+        # Get the completed job data from JOB_STORE
+        job_data = get_job(job_id)
+        if not job_data or job_data.status != JobStatus.DONE:
+            print(f"DEBUG: Job not found or not completed in JOB_STORE: {job_id}")
+            return
+        
+        # Calculate processing time
+        processing_time_ms = int((job_data.finished_at - job_data.started_at).total_seconds() * 1000)
+        
+        # Extract LLM message and reflection from final conversation step
+        llm_message = ""
+        llm_reflection = ""
+        chain_of_thought = ""
+        
+        if job_data.conversation_history and job_data.conversation_history.steps:
+            final_step = job_data.conversation_history.steps[-1]
+            llm_message = final_step.user_message or ""
+            llm_reflection = final_step.rationale or ""
+            # Create chain of thought from all steps
+            chain_of_thought = f"Total steps: {len(job_data.conversation_history.steps)}, Auto refinements: {job_data.conversation_history.total_auto_refinements}"
+        
+        print(f"DEBUG: Extracted data - llm_message: {llm_message[:100]}..., processing_time: {processing_time_ms}ms")
+        
+        # Calculate result count
+        result_count = len(final_results_df)
+        
+        # Update database (failure-safe)
+        from api.database import SessionLocal
+        db = SessionLocal()
+        try:
+            result = SessionService.update_search_job_completion(
+                db, job_id, filters_json, llm_message, llm_reflection, 
+                chain_of_thought, result_count, processing_time_ms
+            )
+            if result:
+                print(f"DEBUG: Successfully updated search job completion for job_id: {job_id}")
+                
+                # Store final search results (only results shown to user)
+                SessionService.store_search_results(
+                    db, job_id, final_results_df
+                )
+                print(f"DEBUG: Stored {result_count} search results for job_id: {job_id}")
+            else:
+                print(f"DEBUG: No search job found in database for job_id: {job_id}")
+        finally:
+            db.close()
+    except Exception as db_error:
+        # Log but don't propagate database errors
+        print(f"Database completion update error (non-fatal): {db_error}")
+        import traceback
+        traceback.print_exc()
+
+async def async_persist_session_data(
+    user_session_id: str,
+    job_id: str, 
+    query_text: str,
+    conversation_history: Optional[ConversationHistory],
+    has_image: bool,
+    client_ip: str,
+    assigned_model: str,
+    search_session_id: str
+):
+    """LAYER 3: Persist session data to database (failure-safe background task)"""
+    try:
+        from api.database import SessionLocal
+        db = SessionLocal()
+        
+        try:
+            # Get or create user session using the EXACT ID from response
+            user_session = SessionService.get_or_create_user_session(
+                db, user_session_id, client_ip
+            )
+            
+            # Determine if this is a new search session or refinement
+            is_new_search = not conversation_history or len(conversation_history.steps) == 0
+            
+            if is_new_search:
+                # Create new search session using provided search_session_id and model
+                SessionService.create_search_session(
+                    db, user_session.user_session_id, query_text, search_session_id, has_image, assigned_model
+                )
+                conversation_turn = 1
+            else:
+                # Refinement: search session already exists, calculate user conversation turn
+                # Debug: Print all step types to understand what we're counting
+                print(f"DEBUG: All steps in conversation_history:")
+                for i, step in enumerate(conversation_history.steps):
+                    print(f"  Step {i+1}: type='{step.step_type}', user_input='{step.user_input[:50]}...'")
+                
+                # Count only user-initiated steps (initial + user_refine), exclude auto_refine
+                user_initiated_steps = [
+                    step for step in conversation_history.steps 
+                    if step.step_type in ["initial", "user_refine"]
+                ]
+                print(f"DEBUG: User-initiated steps:")
+                for i, step in enumerate(user_initiated_steps):
+                    print(f"  User step {i+1}: type='{step.step_type}', user_input='{step.user_input[:50]}...'")
+                
+                # The current user query is already included in conversation_history.steps
+                # So len(user_initiated_steps) already counts the current turn we're processing
+                # Turn 1: initial query → user_initiated_steps = 1 → conversation_turn = 1  
+                # Turn 2: first refinement → user_initiated_steps = 2 → conversation_turn = 2
+                conversation_turn = len(user_initiated_steps)
+                print(f"DEBUG: User turn calculation - total steps: {len(conversation_history.steps)}, user steps: {len(user_initiated_steps)}, turn: {conversation_turn}")
+            
+            # Create search job record using the EXACT job_id and model from the API
+            print(f"DEBUG: Creating search job - job_id: {job_id}, search_session_id: {search_session_id}")
+            search_job = SessionService.create_search_job(
+                db, search_session_id, user_session.user_session_id, job_id,
+                conversation_turn, query_text, has_image, assigned_model
+            )
+            if search_job:
+                print(f"DEBUG: Successfully created search job with id: {search_job.job_id}")
+            else:
+                print(f"DEBUG: Failed to create search job")
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        # Log error but don't propagate - this is tracking only
+        print(f"Database persistence error (non-fatal): {e}")
+        return
