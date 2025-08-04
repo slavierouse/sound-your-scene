@@ -1,6 +1,6 @@
 import { BookmarkIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
 
-function FloatingActionButton({ 
+function FloatingActionButtonPlaylist({ 
   bookmarkCount, 
   isViewingSaved, 
   onToggleView,
@@ -56,4 +56,4 @@ function FloatingActionButton({
   return null
 }
 
-export default FloatingActionButton
+export default FloatingActionButtonPlaylist

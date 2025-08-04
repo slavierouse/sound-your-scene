@@ -3,7 +3,9 @@ import SearchForm from './components/SearchForm'
 import ResultsList from './components/ResultsList'
 import ChatHistory from './components/ChatHistory'
 import LoadingMessage from './components/LoadingMessage'
-import FloatingActionButton from './components/FloatingActionButton'
+import FloatingActionButtonPlaylist from './components/FloatingActionButton'
+import FloatingActionButtonExport from './components/FloatingActionButtonExport'
+import FloatingActionButtonNewSearch from './components/FloatingActionButtonNewSearch'
 import Examples from './components/Examples'
 import { useSearch } from './hooks/useSearch'
 import { bookmarkService } from './services/bookmarkService'
@@ -80,6 +82,21 @@ function App() {
   // Handle toggle between search and saved view
   const handleToggleView = () => {
     setIsViewingSaved(!isViewingSaved)
+  }
+
+  // Handle starting a new search from FAB
+  const handleNewSearchFromFAB = () => {
+    const confirmed = window.confirm("Starting a new search will erase your chat history, results, and bookmarks. Are you sure?")
+    if (!confirmed) return
+    
+    bookmarkService.clearBookmarksOnNewQuery()
+    setBookmarkCount(0)
+    setBookmarkKey(prev => prev + 1)
+    setIsViewingSaved(false)
+    setHasStartedSession(false)
+    resetSession()
+    setQuery('')
+    setImageData(null)
   }
   return (
     <div className="min-h-screen w-full bg-light-cream font-sans">
@@ -187,12 +204,19 @@ function App() {
         </div>
       </main>
 
-      {/* Floating Action Button */}
-      <FloatingActionButton 
+      {/* Floating Action Buttons */}
+      <FloatingActionButtonPlaylist 
         bookmarkCount={bookmarkCount}
         isViewingSaved={isViewingSaved}
         onToggleView={handleToggleView}
         hasStartedSession={hasStartedSession}
+      />
+      <FloatingActionButtonExport 
+        bookmarkCount={bookmarkCount}
+      />
+      <FloatingActionButtonNewSearch 
+        hasResults={hasResults}
+        onNewSearch={handleNewSearchFromFAB}
       />
     </div>
   )
