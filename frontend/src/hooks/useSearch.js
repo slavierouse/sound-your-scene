@@ -87,13 +87,30 @@ export function useSearch(sessionData, setSessionData) {
     }
   }
 
-  // Polling effect
+  // Polling effect with retry logic and timeout
   useEffect(() => {
     if (!jobId) return
 
+    let consecutiveFailures = 0
+    const MAX_CONSECUTIVE_FAILURES = 3
+    const POLLING_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+    const pollingStartTime = Date.now()
+
     const pollResults = async () => {
       try {
+        // Check for overall timeout
+        if (Date.now() - pollingStartTime > POLLING_TIMEOUT_MS) {
+          setError("Search timed out after 5 minutes. Please try again.")
+          setIsLoading(false)
+          setLoadingStep(null)
+          setJobId(null)
+          return
+        }
+
         const data = await apiService.getJobStatus(jobId)
+        
+        // Reset failure count on successful poll
+        consecutiveFailures = 0
         
         if (data.status === 'done') {
           setResults(data.results?.tracks || [])
@@ -172,14 +189,21 @@ export function useSearch(sessionData, setSessionData) {
           }
         }
       } catch (err) {
-        setError(err.message)
-        setIsLoading(false)
-        setLoadingStep(null)
-        setJobId(null)
+        consecutiveFailures++
+        console.warn(`Poll failed (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}):`, err.message)
+        
+        // Only fail after multiple consecutive failures
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          setError(`Connection failed after ${MAX_CONSECUTIVE_FAILURES} attempts: ${err.message}`)
+          setIsLoading(false)
+          setLoadingStep(null)
+          setJobId(null)
+        }
+        // Otherwise, continue polling - the error might be temporary
       }
     }
 
-    const interval = setInterval(pollResults, 2000) // Poll every 2 seconds
+    const interval = setInterval(pollResults, 4000) // Poll every 4 seconds
     
     return () => clearInterval(interval)
   }, [jobId])

@@ -1,5 +1,6 @@
 import uuid
 import random
+import asyncio
 from datetime import datetime
 from fastapi import HTTPException, BackgroundTasks
 from typing import Dict, Any, Optional
@@ -59,26 +60,32 @@ async def create_search_job(request: SearchRequest, background_tasks: Background
     store_job(job_id, job_data)
     
     # LAYER 2: Core search processing (existing working logic)
-    background_tasks.add_task(
-        process_search_job, 
-        job_id, 
-        request.query_text, 
-        request.conversation_history if request.conversation_history else None,
-        request.image_data
-    )
+    try:
+        background_tasks.add_task(
+            process_search_job, 
+            job_id, 
+            request.query_text, 
+            request.conversation_history if request.conversation_history else None,
+            request.image_data
+        )
+    except Exception as e:
+        print(f"⚠️ Background search task failed (non-fatal): {e}")
     
     # LAYER 3: Database persistence (runs in parallel, captures all attempts)
-    background_tasks.add_task(
-        async_persist_session_data,
-        user_session_id,
-        job_id,
-        request.query_text,
-        request.conversation_history,
-        bool(request.image_data),
-        client_ip,
-        assigned_model,
-        search_session_id
-    )
+    try:
+        background_tasks.add_task(
+            async_persist_session_data,
+            user_session_id,
+            job_id,
+            request.query_text,
+            request.conversation_history,
+            bool(request.image_data),
+            client_ip,
+            assigned_model,
+            search_session_id
+        )
+    except Exception as e:
+        print(f"⚠️ Background session persistence task failed (non-fatal): {e}")
     
     # Return immediately - no database blocking
     return {
@@ -280,9 +287,16 @@ async def process_search_job(job_id: str, query_text: str, existing_conversation
         store_job(job_id, job_data)
         store_results(job_id, api_results)
         
+        # Clean up old jobs from cache
+        from api.storage import cleanup_old_jobs
+        cleanup_old_jobs()
+        
         # LAYER 3: Update database with search job completion (runs after job is DONE)
         import asyncio
-        asyncio.create_task(async_update_search_job_completion(job_id, filters_json, final_results_df))
+        try:
+            asyncio.create_task(async_update_search_job_completion(job_id, filters_json, final_results_df))
+        except Exception as e:
+            print(f"⚠️ Background task creation failed (non-fatal): {e}")
         
     except Exception as e:
         # Update job with error
@@ -291,6 +305,10 @@ async def process_search_job(job_id: str, query_text: str, existing_conversation
         job_data.finished_at = datetime.now()
         job_data.error_message = str(e)
         store_job(job_id, job_data)
+        
+        # Clean up old jobs from cache
+        from api.storage import cleanup_old_jobs
+        cleanup_old_jobs()
 
 async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_model: str, max_iters: int = 3, image_data: Optional[str] = None):
     """Run auto-refinement with detailed step tracking"""
@@ -643,6 +661,10 @@ async def async_update_search_job_completion(job_id: str, filters_json: Dict[str
                 print(f"DEBUG: No search job found in database for job_id: {job_id}")
         finally:
             db.close()
+    except asyncio.CancelledError:
+        # Handle graceful shutdown
+        print(f"DEBUG: Search job completion update cancelled during shutdown for job_id: {job_id}")
+        raise  # Re-raise to properly handle cancellation
     except Exception as db_error:
         # Log but don't propagate database errors
         print(f"Database completion update error (non-fatal): {db_error}")
@@ -716,6 +738,10 @@ async def async_persist_session_data(
         finally:
             db.close()
             
+    except asyncio.CancelledError:
+        # Handle graceful shutdown
+        print(f"DEBUG: Session persistence cancelled during shutdown for job_id: {job_id}")
+        raise  # Re-raise to properly handle cancellation
     except Exception as e:
         # Log error but don't propagate - this is tracking only
         print(f"Database persistence error (non-fatal): {e}")

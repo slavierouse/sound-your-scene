@@ -36,11 +36,44 @@ if os.path.exists(static_dir):
     
     # Mount other static files (favicon, etc.)
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+else:
+    print(f"Warning: Static directory not found at {static_dir}")
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize data and model on startup"""
     initialize_services()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Graceful shutdown - cleanup resources"""
+    try:
+        from api.database import close_db
+        close_db()
+        print("🛑 Server shutdown complete")
+    except Exception as e:
+        print(f"⚠️ Shutdown cleanup error (non-fatal): {e}")
+
+@app.get("/health")
+async def health_check():
+    """Enhanced health check for load balancer (no database dependency)"""
+    try:
+        from api.storage import JOB_STORE, RESULT_STORE
+        import psutil
+        from datetime import datetime
+        
+        memory_percent = psutil.virtual_memory().percent
+        
+        return {
+            "status": "healthy",
+            "memory_usage": f"{memory_percent}%",
+            "active_jobs": len(JOB_STORE),
+            "cached_results": len(RESULT_STORE),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        # Fallback to simple response if monitoring fails
+        return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
 @app.get("/")
 async def root():
@@ -51,6 +84,7 @@ async def root():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     else:
+        print(f"Warning: Frontend index.html not found at {index_path}")
         return {"message": "SoundByMood API", "status": "running", "note": "Frontend not built"}
 
 @app.post("/search")
@@ -241,6 +275,7 @@ async def serve_frontend(full_path: str):
     if os.path.exists(index_path):
         return FileResponse(index_path)
     else:
+        print(f"Warning: Frontend index.html not found at {index_path}")
         raise HTTPException(status_code=404, detail="Frontend not found")
 
 if __name__ == "__main__":

@@ -29,14 +29,12 @@ cp -r api deployment-bundle/
 find deployment-bundle/api -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 cp requirements.txt deployment-bundle/
 cp Procfile deployment-bundle/
-# Copy EB extensions for database migrations
-if [ -d ".ebextensions" ]; then
-    mkdir -p deployment-bundle/.ebextensions
-    cp -r .ebextensions/* deployment-bundle/.ebextensions/
-    echo "📋 Copied .ebextensions configuration"
-else
-    echo "⚠️  No .ebextensions directory found"
-fi
+# Note: alembic files removed - running migrations manually
+echo "ℹ️  Skipping alembic files - running migrations manually"
+mkdir -p deployment-bundle/data
+cp data/main_df.csv deployment-bundle/data/
+# Note: .ebextensions removed - running alembic manually
+echo "ℹ️  Skipping .ebextensions - running alembic manually"
 
 
 # Create zip file
@@ -45,18 +43,17 @@ cd deployment-bundle
 zip -r ../soundbymood-deployment.zip .
 cd ..
 
-aws s3 cp "soundbymood-deployment.zip" "s3://soundyourscene-versions/soundbymood-deployment.zip"
+# aws s3 cp "soundbymood-deployment.zip" "s3://soundyourscene-versions/soundbymood-deployment-v3.zip"
 
-aws elasticbeanstalk create-application-version \
-  --application-name  Sound-your-scene \
-  --version-label     20250804-01 \
-  --source-bundle     S3Bucket=soundyourscene-versions,S3Key=soundbymood-deployment.zip
+# aws elasticbeanstalk create-application-version \
+#   --application-name  Sound-your-scene \
+#   --version-label     20250804-03 \
+#   --source-bundle     S3Bucket=soundyourscene-versions,S3Key=soundbymood-deployment-v2.zip
 
 
-aws elasticbeanstalk update-environment \
-  --environment-name  Sound-your-scene-env \
-  --version-label     20250804-01 \
-  --option-settings   "Namespace=aws:elasticbeanstalk:application:environment,OptionName=DATABASE_URL,Value=postgresql://api_user:kuzcok-8hykgu-Duwkop@pg-database-1.chhquxplmnn2.us-east-1.rds.amazonaws.com/soundbymood"
+# aws elasticbeanstalk update-environment \
+#   --environment-name  Sound-your-scene-env-2 \
+#   --version-label     20250804-03
 
 echo "✅ Deployment bundle created: soundbymood-deployment.zip"
 echo "📤 Upload this file to AWS Elastic Beanstalk" 

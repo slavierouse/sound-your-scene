@@ -12,7 +12,15 @@ class MusicService:
         
     def initialize(self, data_path: str = 'data/main_df.csv'):
         """Load and initialize the music dataset"""
-        self.main_df = pd.read_csv(data_path)
+        import os
+        
+        # Get the directory where this file is located
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Go up one level to the deployment bundle root, then to data/
+        project_root = os.path.dirname(current_dir)
+        full_data_path = os.path.join(project_root, data_path)
+        
+        self.main_df = pd.read_csv(full_data_path)
         
     def search(self, filters_json: Dict[str, Any]) -> Dict[str, Any]:
         """Apply filters and scoring, return results and summary"""

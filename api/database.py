@@ -17,12 +17,12 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is required")
 
-# Create engine with robust connection pooling
+# Create engine with robust connection pooling (optimized for 3 workers)
 engine = create_engine(
     DATABASE_URL,
     # Connection pool settings
-    pool_size=10,        # Number of connections to maintain in pool
-    max_overflow=20,     # Additional connections beyond pool_size
+    pool_size=5,         # Number of connections to maintain in pool (reduced for EB)
+    max_overflow=10,     # Additional connections beyond pool_size (reduced)
     pool_pre_ping=True,  # Verify connections before use (prevents stale connections)
     pool_recycle=3600,   # Recycle connections after 1 hour (prevents timeout issues)
     

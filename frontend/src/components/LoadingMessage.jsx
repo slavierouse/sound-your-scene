@@ -5,11 +5,11 @@ function LoadingMessage({ message, animated = false }) {
     return <span>{message}</span>
   }
 
-  // Add animated dots to loading messages
+  // Add animated dots to loading messages with timing note
   if (message.endsWith('further') || message.endsWith('results') || message.endsWith('request')) {
     return (
       <span>
-        {message}<AnimatedDots />
+        {message} (up to 1-2 minutes)<AnimatedDots />
       </span>
     )
   }
