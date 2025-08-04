@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiService } from '../services/apiService'
+import { emit } from '../services/trackingService'
 
 export function useSearch(sessionData, setSessionData) {
   const [jobId, setJobId] = useState(null)
@@ -26,7 +27,8 @@ export function useSearch(sessionData, setSessionData) {
     setLoadingStep({ message: "Gathering initial results", step: "starting", animated: true })
 
     // Increment user response count
-    setUserResponseCount(prev => prev + 1)
+    const newUserResponseCount = userResponseCount + 1
+    setUserResponseCount(newUserResponseCount)
 
     // Add user message to chat history
     setChatHistory(prev => [...prev, {
@@ -40,6 +42,8 @@ export function useSearch(sessionData, setSessionData) {
       const data = await apiService.createSearch(queryText, conversationHistory, imageData?.base64Data, sessionData)
       setJobId(data.job_id)
       
+      // Tracking service will be updated by App.jsx useEffect when meta is set
+      
       // Update session data with response
       const isNewSearch = !conversationHistory
       const isFirstTimeUser = !sessionData.userSessionId
@@ -47,18 +51,20 @@ export function useSearch(sessionData, setSessionData) {
       if (isNewSearch) {
         if (isFirstTimeUser) {
           // First-time user: update all session fields
-          setSessionData({
+          const newSessionData = {
             userSessionId: data.user_session_id,
             searchSessionId: data.search_session_id,
             model: data.model
-          })
+          }
+          setSessionData(newSessionData)
         } else {
           // Existing user starting new search: keep userSessionId, update search session
-          setSessionData({
+          const newSessionData = {
             userSessionId: sessionData.userSessionId, // Keep existing user session
             searchSessionId: data.search_session_id,  // New search session
             model: data.model
-          })
+          }
+          setSessionData(newSessionData)
         }
       } else {
         // Refinement: session fields should stay the same (backend returns same values)
@@ -67,11 +73,12 @@ export function useSearch(sessionData, setSessionData) {
             data.search_session_id !== sessionData.searchSessionId || 
             data.model !== sessionData.model) {
           console.warn('Session data changed unexpectedly on refinement:', data)
-          setSessionData({
+          const newSessionData = {
             userSessionId: data.user_session_id,
             searchSessionId: data.search_session_id,
             model: data.model
-          })
+          }
+          setSessionData(newSessionData)
         }
       }
     } catch (err) {
@@ -94,6 +101,7 @@ export function useSearch(sessionData, setSessionData) {
             llm_message: data.results?.llm_message,
             llm_reflection: data.results?.llm_reflection,
             result_count: data.results?.result_count,
+            job_id: jobId
           })
           
           // Add bot response to chat history

@@ -3,7 +3,7 @@ import { BookmarkIcon, BookmarkSlashIcon } from '@heroicons/react/24/outline'
 import { bookmarkService } from '../services/bookmarkService'
 import { emit } from '../services/trackingService'
 
-function TrackView({ track, index, jobId, originalQuery, relevanceIndex, onBookmarkChange, bookmarkKey, hideBookmarkButton = false }) {
+function TrackView({ track, index, originalQuery, relevanceIndex, onBookmarkChange, bookmarkKey, hideBookmarkButton = false }) {
   const [isBookmarked, setIsBookmarked] = useState(false)
   const embedRef = useRef(null)
   const hasTrackedPlay = useRef(false)
@@ -44,19 +44,16 @@ function TrackView({ track, index, jobId, originalQuery, relevanceIndex, onBookm
       try {
         // event.data is already parsed if it's an object
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data
-        console.log('Spotify embed message:', data) // Debug: see what messages we get
         
         if (data.type === 'playback_update' && data.payload) {
           const payload = data.payload
           // Track when playback starts (not paused and position near 0) - but only once
           if (!payload.isPaused && payload.position <= 1000 && !hasTrackedPlay.current) {
             hasTrackedPlay.current = true
-            console.log('Tracking play for:', track.track)
-            emit.play(track, index + 1, jobId)
+            emit.play(track, index + 1)
           }
         }
       } catch (error) {
-        console.log('Error parsing Spotify message:', error, event.data)
       }
     }
 
@@ -72,9 +69,11 @@ function TrackView({ track, index, jobId, originalQuery, relevanceIndex, onBookm
       if (isBookmarked) {
         bookmarkService.removeBookmark(track.spotify_track_id)
         setIsBookmarked(false)
+        emit.click('bookmark_removed', track, index + 1)
       } else {
-        bookmarkService.addBookmark(track, jobId, originalQuery, relevanceIndex)
+        bookmarkService.addBookmark(track, null, originalQuery, relevanceIndex)
         setIsBookmarked(true)
+        emit.click('bookmark_added', track, index + 1)
       }
       
       // Notify parent component of bookmark change
@@ -108,7 +107,7 @@ function TrackView({ track, index, jobId, originalQuery, relevanceIndex, onBookm
                 rel="noopener noreferrer"
                 className="text-red-600 hover:text-red-700 text-xs sm:text-sm font-medium"
                 onClick={() => {
-                  emit.click('youtube', track, index + 1, jobId)
+                  emit.click('youtube', track, index + 1)
                   // Don't prevent default - let link open normally
                 }}
               >
@@ -122,7 +121,7 @@ function TrackView({ track, index, jobId, originalQuery, relevanceIndex, onBookm
                 rel="noopener noreferrer"
                 className="text-green-600 hover:text-green-700 text-xs sm:text-sm font-medium"
                 onClick={() => {
-                  emit.click('spotify', track, index + 1, jobId)
+                  emit.click('spotify', track, index + 1)
                   // Don't prevent default - let link open normally
                 }}
               >

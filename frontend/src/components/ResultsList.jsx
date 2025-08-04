@@ -216,7 +216,6 @@ function ResultsList({ results, meta, isViewingSaved, onBookmarkChange, onClearA
                 key={track.spotify_track_id || index} 
                 track={track} 
                 index={startIndex + index}
-                jobId={meta?.job_id}
                 originalQuery={meta?.original_query}
                 relevanceIndex={track.rank_position - 1} // Convert to 0-based index
                 onBookmarkChange={onBookmarkChange}

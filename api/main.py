@@ -220,6 +220,17 @@ async def email_playlist(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Email service error: {str(e)}")
 
+@app.get("/stats")
+async def get_dashboard_metrics(db: Session = Depends(get_db)):
+    """Get all performance metrics for dashboard"""
+    from api.dashboard_service import DashboardService
+    
+    try:
+        data = DashboardService.get_all_dashboard_data(db)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Dashboard metrics error: {str(e)}")
+
 # Catch-all route for frontend (must be last)
 @app.get("/{full_path:path}")
 async def serve_frontend(full_path: str):

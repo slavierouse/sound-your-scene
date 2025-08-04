@@ -19,7 +19,6 @@ class TrackingService {
     if (!this.sessionData?.userSessionId) return
 
     const finalJobId = jobId || this.currentJobId
-    console.log('Tracking click - jobId:', jobId, 'currentJobId:', this.currentJobId, 'final:', finalJobId)
 
     return await apiService.trackEvent({
       event_type: `${type}_click`,
