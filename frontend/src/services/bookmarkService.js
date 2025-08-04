@@ -1,37 +1,66 @@
+import { APP_CONFIG } from '../config/constants'
+import { apiService } from './apiService'
+
 const STORAGE_KEY = 'soundbymood_v1_bookmarks'
-const MAX_BOOKMARKS = 100
+const MAX_BOOKMARKS = APP_CONFIG.MAX_PLAYLIST_SIZE
 
 class BookmarkService {
   constructor() {
-    this.bookmarks = this.loadBookmarks()
+    const data = this.loadData()
+    this.bookmarks = data.bookmarks
+    this.playlistId = data.playlistId
+    this.playlistSyncCallback = null
   }
 
-  loadBookmarks() {
+  // Set callback for playlist sync
+  setPlaylistSyncCallback(callback) {
+    this.playlistSyncCallback = callback
+  }
+
+  loadData() {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
-      if (!stored) return []
+      if (!stored) return { bookmarks: [], playlistId: null }
       
       const data = JSON.parse(stored)
-      // Validate structure
-      if (!Array.isArray(data)) return []
       
-      const filtered = data.filter(bookmark => 
-        bookmark.track && 
-        typeof bookmark.saved_at === 'string'
-        // Remove job_id and original_query validation since they're not always present
-      )
-      return filtered
+      // Handle legacy format (array of bookmarks)
+      if (Array.isArray(data)) {
+        const filtered = data.filter(bookmark => 
+          bookmark.track && 
+          typeof bookmark.saved_at === 'string'
+        )
+        return { bookmarks: filtered, playlistId: null }
+      }
+      
+      // Handle new format (object with bookmarks and playlistId)
+      if (data && typeof data === 'object') {
+        const bookmarks = Array.isArray(data.bookmarks) ? data.bookmarks.filter(bookmark => 
+          bookmark.track && 
+          typeof bookmark.saved_at === 'string'
+        ) : []
+        return { 
+          bookmarks, 
+          playlistId: data.playlistId || null 
+        }
+      }
+      
+      return { bookmarks: [], playlistId: null }
     } catch (error) {
-      console.error('Error loading bookmarks:', error)
-      return []
+      console.error('Error loading bookmark data:', error)
+      return { bookmarks: [], playlistId: null }
     }
   }
 
-  saveBookmarks() {
+  saveData() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.bookmarks))
+      const data = {
+        bookmarks: this.bookmarks,
+        playlistId: this.playlistId
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
     } catch (error) {
-      console.error('Error saving bookmarks:', error)
+      console.error('Error saving bookmark data:', error)
     }
   }
 
@@ -55,7 +84,13 @@ class BookmarkService {
     }
 
     this.bookmarks.push(bookmark)
-    this.saveBookmarks()
+    this.saveData()
+    
+    // Trigger playlist sync
+    if (this.playlistSyncCallback) {
+      this.playlistSyncCallback()
+    }
+    
     return true
   }
 
@@ -66,7 +101,13 @@ class BookmarkService {
     )
     
     if (this.bookmarks.length < initialLength) {
-      this.saveBookmarks()
+      this.saveData()
+      
+      // Trigger playlist sync
+      if (this.playlistSyncCallback) {
+        this.playlistSyncCallback()
+      }
+      
       return true
     }
     return false
@@ -86,9 +127,23 @@ class BookmarkService {
     return this.bookmarks.length
   }
 
+  getTrackIds() {
+    return this.bookmarks.map(bookmark => bookmark.track.spotify_track_id)
+  }
+
+  getPlaylistId() {
+    return this.playlistId
+  }
+
+  setPlaylistId(playlistId) {
+    this.playlistId = playlistId
+    this.saveData()
+  }
+
   clearAllBookmarks() {
     this.bookmarks = []
-    this.saveBookmarks()
+    this.playlistId = null
+    this.saveData()
   }
 
   // Session management

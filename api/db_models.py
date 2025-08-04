@@ -21,7 +21,6 @@ class UserSession(Base):
     
     # Relationships
     search_sessions = relationship("SearchSession", back_populates="user_session")
-    playlists = relationship("Playlist", back_populates="user_session")
 
 class SearchSession(Base):
     """Search sessions - one initial query + all its follow-up turns"""
@@ -37,6 +36,7 @@ class SearchSession(Base):
     # Relationships  
     user_session = relationship("UserSession", back_populates="search_sessions")
     search_jobs = relationship("SearchJob", back_populates="search_session")
+    playlist = relationship("Playlist", back_populates="search_session", uselist=False)  # One playlist per search session
 
 class SearchJob(Base):
     """Individual turns within a search session (job_id from current system)"""
@@ -98,14 +98,29 @@ class TrackEvent(Base):
     search_job = relationship("SearchJob", back_populates="track_events")
 
 class Playlist(Base):
-    """Playlists for permalink feature"""
+    """Playlists for permalink feature - belongs to search sessions"""
     __tablename__ = "playlists"
     
     id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
-    user_session_id = Column(UUID(as_uuid=False), ForeignKey("user_sessions.user_session_id"), nullable=True)
+    search_session_id = Column(UUID(as_uuid=False), ForeignKey("search_sessions.search_session_id"), nullable=False)
     track_ids = Column(JSONB, nullable=False)  # array of spotify_track_ids
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     access_count = Column(Integer, default=0)
     
     # Relationships
-    user_session = relationship("UserSession", back_populates="playlists")
+    search_session = relationship("SearchSession", back_populates="playlist")
+
+class EmailSend(Base):
+    """Record of email sends for analytics"""
+    __tablename__ = "email_sends"
+    
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    playlist_id = Column(UUID(as_uuid=False), ForeignKey("playlists.id"), nullable=False)
+    email_address = Column(String, nullable=False)
+    client_ip = Column(String, nullable=True)
+    success = Column(Boolean, nullable=False)
+    error_message = Column(Text, nullable=True)
+    sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    playlist = relationship("Playlist")

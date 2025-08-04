@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect } from 'react'
 import TrackView from './TrackView'
 import { bookmarkService } from '../services/bookmarkService'
+import { emit } from '../services/trackingService'
 
-function ResultsList({ results, meta, isViewingSaved, onBookmarkChange, onClearAll, bookmarkKey }) {
+function ResultsList({ results, meta, isViewingSaved, onBookmarkChange, onClearAll, bookmarkKey, hideBookmarkButton = false }) {
   const [currentPage, setCurrentPage] = useState(1)
   const [sortBy, setSortBy] = useState('relevance')
   const [savedTracks, setSavedTracks] = useState([])
@@ -220,6 +221,7 @@ function ResultsList({ results, meta, isViewingSaved, onBookmarkChange, onClearA
                 relevanceIndex={track.rank_position - 1} // Convert to 0-based index
                 onBookmarkChange={onBookmarkChange}
                 bookmarkKey={bookmarkKey}
+                hideBookmarkButton={hideBookmarkButton}
               />
             ))}
           </div>
@@ -233,7 +235,10 @@ function ResultsList({ results, meta, isViewingSaved, onBookmarkChange, onClearA
                     <span className="text-gray-400 text-xs sm:text-sm">...</span>
                   ) : (
                     <button
-                      onClick={() => setCurrentPage(pageNum)}
+                      onClick={() => {
+                        setCurrentPage(pageNum)
+                        emit.pagination(pageNum)
+                      }}
                       className={`text-xs sm:text-sm min-h-[32px] px-2 ${
                         currentPage === pageNum
                           ? 'text-teal-600 font-medium'

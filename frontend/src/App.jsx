@@ -9,6 +9,9 @@ import FloatingActionButtonNewSearch from './components/FloatingActionButtonNewS
 import Examples from './components/Examples'
 import { useSearch } from './hooks/useSearch'
 import { bookmarkService } from './services/bookmarkService'
+import { apiService } from './services/apiService'
+import { APP_CONFIG } from './config/constants'
+import { emit } from './services/trackingService'
 
 function App() {
   const [query, setQuery] = useState('')
@@ -25,20 +28,61 @@ function App() {
     model: null
   })
   
-  const { startSearch, resetSession, results, meta, isLoading, error, loadingStep, chatHistory, userResponseCount, conversationHistory } = useSearch(sessionData, setSessionData)
+  // Playlist state management
+  const [activePlaylistId, setActivePlaylistId] = useState(null)
+  
+  const { startSearch, resetSession, results, meta, isLoading, error, loadingStep, chatHistory, userResponseCount, conversationHistory, jobId } = useSearch(sessionData, setSessionData)
   
   const hasResults = results && results.length > 0
   const hasSearched = meta !== null
 
-  // Update bookmark count and key
+  // Sync playlist with backend
+  const syncPlaylist = async () => {
+    if (!sessionData.searchSessionId) {
+      // No active search session, but use saved playlist ID for export if available
+      const savedPlaylistId = bookmarkService.getPlaylistId()
+      if (savedPlaylistId) {
+        setActivePlaylistId(savedPlaylistId)
+      }
+      return
+    }
+    
+    const trackIds = bookmarkService.getTrackIds()
+    
+    // Always sync with backend (including empty track lists)
+    try {
+      const result = await apiService.createOrUpdatePlaylist(trackIds, sessionData.searchSessionId)
+      setActivePlaylistId(result.playlist_id)
+      // Save playlist ID to localStorage
+      bookmarkService.setPlaylistId(result.playlist_id)
+    } catch (error) {
+      console.error('Failed to sync playlist:', error)
+    }
+  }
+
+  // Update bookmark count and sync playlist
   const updateBookmarkCount = () => {
     setBookmarkCount(bookmarkService.getBookmarkCount())
     setBookmarkKey(prev => prev + 1) // Increment to trigger re-render
+    syncPlaylist() // Sync with backend
   }
 
   useEffect(() => {
-    updateBookmarkCount()
+    // Set up bookmark service callback for playlist sync
+    bookmarkService.setPlaylistSyncCallback(syncPlaylist)
+    // Restore playlist ID from localStorage if available
+    const savedPlaylistId = bookmarkService.getPlaylistId()
+    if (savedPlaylistId) {
+      setActivePlaylistId(savedPlaylistId)
+    }
+    // Update bookmark count but don't sync playlist on initial load since we just restored the ID
+    setBookmarkCount(bookmarkService.getBookmarkCount())
   }, [])
+
+  // Update tracking service when session data changes
+  useEffect(() => {
+    emit.setSession(sessionData, meta?.job_id, userResponseCount)
+  }, [sessionData, meta?.job_id, userResponseCount])
 
   // Handle new search - clear bookmarks for initial search, keep for refinements
   const handleNewSearch = (queryText, currentImageData = null) => {
@@ -47,6 +91,7 @@ function App() {
       bookmarkService.clearBookmarksOnNewQuery()
       setBookmarkCount(0)
       setBookmarkKey(prev => prev + 1)
+      setActivePlaylistId(null) // Clear playlist ID on new search
     }
     setIsViewingSaved(false)
     setHasStartedSession(true) // Mark that user has started a session
@@ -92,6 +137,7 @@ function App() {
     bookmarkService.clearBookmarksOnNewQuery()
     setBookmarkCount(0)
     setBookmarkKey(prev => prev + 1)
+    setActivePlaylistId(null) // Clear playlist ID
     setIsViewingSaved(false)
     setHasStartedSession(false)
     resetSession()
@@ -213,6 +259,7 @@ function App() {
       />
       <FloatingActionButtonExport 
         bookmarkCount={bookmarkCount}
+        activePlaylistId={activePlaylistId}
       />
       <FloatingActionButtonNewSearch 
         hasResults={hasResults}

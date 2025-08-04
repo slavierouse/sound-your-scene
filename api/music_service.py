@@ -188,3 +188,68 @@ class MusicService:
     def _truncate(self, s, n: int = 120):
         """Truncate string to n characters (from notebook)"""
         return (s[:n] + "…") if isinstance(s, str) and len(s) > n else s
+    
+    def get_tracks_by_spotify_ids(self, spotify_track_ids: List[str]) -> List[TrackResult]:
+        """
+        Get multiple tracks by Spotify IDs - returns only immutable track data
+        
+        Perfect for:
+        - Playlist permalinks (no ranking needed)
+        - Database fallback (combine with stored rankings separately)
+        
+        Args:
+            spotify_track_ids: List of Spotify track IDs
+            
+        Returns:
+            List of TrackResult objects with immutable data (rank_position=index, relevance_score=0.0)
+        """
+        if self.main_df is None:
+            return []
+        
+        # Get all matching tracks in one efficient dataframe operation
+        matching_tracks = self.main_df[self.main_df['spotify_track_id'].isin(spotify_track_ids)]
+        
+        if len(matching_tracks) == 0:
+            return []
+        
+        tracks = []
+        for i, spotify_track_id in enumerate(spotify_track_ids):
+            # Find the track in the matching results
+            track_rows = matching_tracks[matching_tracks['spotify_track_id'] == spotify_track_id]
+            
+            if len(track_rows) > 0:
+                row = track_rows.iloc[0]
+                
+                try:
+                    track = TrackResult(
+                        spotify_track_id=spotify_track_id,
+                        track=str(row["track"]),
+                        artist=str(row["artist"]),
+                        album_release_year=int(row["album_release_year"]),
+                        spotify_artist_genres=str(row.get("spotify_artist_genres", "")) if pd.notna(row.get("spotify_artist_genres")) else "",
+                        track_is_explicit=bool(row["track_is_explicit"]),
+                        duration_ms=int(row["duration_ms"]),
+                        url_youtube=row.get("url_youtube"),
+                        spotify_url=f"https://open.spotify.com/track/{spotify_track_id}",
+                        danceability_decile=int(row["danceability_decile"]),
+                        energy_decile=int(row["energy_decile"]),
+                        acousticness_decile=int(row["acousticness_decile"]),
+                        instrumentalness_decile=int(row["instrumentalness_decile"]),
+                        liveness_decile=int(row["liveness_decile"]),
+                        valence_decile=int(row["valence_decile"]),
+                        views_decile=int(row["views_decile"]),
+                        views=int(row["views"]) if pd.notna(row.get("views")) else None,
+                        tempo=float(row["tempo"]),
+                        loudness=float(row["loudness"]),
+                        instrumentalness=float(row["instrumentalness"]),
+                        # Query-specific data with defaults (will be overridden by caller if needed)
+                        relevance_score=0.0,
+                        rank_position=i + 1  # Default to list order
+                    )
+                    tracks.append(track)
+                except (KeyError, ValueError, TypeError) as e:
+                    # Skip tracks with missing/invalid data - no fake defaults
+                    print(f"Skipping track {spotify_track_id} due to data issue: {e}")
+                    continue
+        
+        return tracks

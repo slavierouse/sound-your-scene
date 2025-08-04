@@ -189,32 +189,30 @@ async def get_job_status_from_database(job_id: str) -> JobResponse:
             ).order_by(SearchResult.rank_position).limit(150).all()
             
             if search_results:
-                # For fallback, create simplified track results with just the stored data
-                tracks = []
+                # Get track data using clean separation approach
+                from api.music_service import MusicService
+                music_service = MusicService()
+                music_service.initialize()
+                
+                # Step 1: Get spotify track IDs in rank order
+                spotify_track_ids = [result.spotify_track_id for result in search_results]
+                
+                # Step 2: Get immutable track data from music service
+                tracks = music_service.get_tracks_by_spotify_ids(spotify_track_ids)
+                
+                # Step 3: Apply stored rankings from database (merge query-specific data)
+                track_dict = {track.spotify_track_id: track for track in tracks}
+                final_tracks = []
+                
                 for result in search_results:
-                    track = TrackResult(
-                        spotify_track_id=result.spotify_track_id,
-                        track="[Track data not available - server restart]",
-                        artist="[Artist data not available - server restart]", 
-                        album_release_year=2000,
-                        spotify_artist_genres="",
-                        track_is_explicit=False,
-                        duration_ms=180000,
-                        url_youtube=None,
-                        spotify_url=f"https://open.spotify.com/track/{result.spotify_track_id}",
-                        danceability_decile=5,
-                        energy_decile=5,
-                        acousticness_decile=5,
-                        liveness_decile=5,
-                        valence_decile=5,
-                        views_decile=5,
-                        tempo=120.0,
-                        loudness=-10.0,
-                        duration_ms_value=180000,
-                        instrumentalness=0.0,
-                        relevance_score=float(result.relevance_score) if result.relevance_score else 0.0
-                    )
-                    tracks.append(track)
+                    if result.spotify_track_id in track_dict:
+                        track = track_dict[result.spotify_track_id]
+                        # Override with stored rankings from database (source of truth)
+                        track.relevance_score = float(result.relevance_score) if result.relevance_score else 0.0
+                        track.rank_position = result.rank_position
+                        final_tracks.append(track)
+                
+                tracks = final_tracks
                 
                 results = SearchResults(
                     job_id=job_id,

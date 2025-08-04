@@ -3,3 +3,16 @@ venv/
 .DS_Store
 **/.ipynb_checkpoints/
 **/__pycache__/
+
+
+deployment-bundle/
+soundbymood-deployment.zip
+api/static/
+
+# AWS Elastic Beanstalk
+.elasticbeanstalk/
+.ebextensions/
+
+# Environment files
+.env.local
+.env.production

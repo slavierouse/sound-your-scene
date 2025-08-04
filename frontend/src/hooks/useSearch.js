@@ -42,13 +42,24 @@ export function useSearch(sessionData, setSessionData) {
       
       // Update session data with response
       const isNewSearch = !conversationHistory
+      const isFirstTimeUser = !sessionData.userSessionId
+      
       if (isNewSearch) {
-        // New search: update all session fields
-        setSessionData({
-          userSessionId: data.user_session_id,
-          searchSessionId: data.search_session_id,
-          model: data.model
-        })
+        if (isFirstTimeUser) {
+          // First-time user: update all session fields
+          setSessionData({
+            userSessionId: data.user_session_id,
+            searchSessionId: data.search_session_id,
+            model: data.model
+          })
+        } else {
+          // Existing user starting new search: keep userSessionId, update search session
+          setSessionData({
+            userSessionId: sessionData.userSessionId, // Keep existing user session
+            searchSessionId: data.search_session_id,  // New search session
+            model: data.model
+          })
+        }
       } else {
         // Refinement: session fields should stay the same (backend returns same values)
         // Only update if backend actually changed something (shouldn't happen)

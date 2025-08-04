@@ -1,13 +1,16 @@
 import { ArrowUpTrayIcon, ArrowLeftIcon, EnvelopeIcon, LinkIcon } from '@heroicons/react/24/outline'
 import { useState } from 'react'
+import { APP_CONFIG } from '../config/constants'
+import { apiService } from '../services/apiService'
 
-function FloatingActionButtonExport({ bookmarkCount }) {
+function FloatingActionButtonExport({ bookmarkCount, activePlaylistId }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [isEmailMode, setIsEmailMode] = useState(false)
   const [email, setEmail] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [isLinkCopied, setIsLinkCopied] = useState(false)
+  const [error, setError] = useState('')
 
   // Success state
   if (isSuccess) {
@@ -27,6 +30,21 @@ function FloatingActionButtonExport({ bookmarkCount }) {
     )
   }
 
+  // Error state
+  if (error) {
+    return (
+      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 flex items-center px-3 sm:px-4 py-2 sm:py-3 bg-red-600 text-white rounded-lg shadow-lg text-sm sm:text-base font-medium max-w-xs">
+        <span className="truncate">{error}</span>
+        <button
+          onClick={() => setError('')}
+          className="ml-2 text-white hover:text-red-200"
+        >
+          ×
+        </button>
+      </div>
+    )
+  }
+
   // Only show when there are saved tracks
   if (bookmarkCount === 0) {
     return null
@@ -42,6 +60,7 @@ function FloatingActionButtonExport({ bookmarkCount }) {
             setIsEmailMode(false)
             setIsExpanded(false)
             setEmail('')
+            setError('')
           }}
           className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 hover:bg-teal-700 transition-colors rounded-l-lg"
         >
@@ -62,10 +81,17 @@ function FloatingActionButtonExport({ bookmarkCount }) {
 
         {/* Send button */}
         <button
-          onClick={() => {
+          onClick={async () => {
+            if (!activePlaylistId) {
+              setError('No playlist available to email')
+              return
+            }
+
             setIsSubmitting(true)
-            // Simulate submission with 3 second timeout
-            setTimeout(() => {
+            setError('')
+            
+            try {
+              await apiService.emailPlaylist(activePlaylistId, email)
               setIsSubmitting(false)
               setIsSuccess(true)
               // Show success for 3 seconds, then revert to default
@@ -75,7 +101,10 @@ function FloatingActionButtonExport({ bookmarkCount }) {
                 setIsExpanded(false)
                 setEmail('')
               }, 3000)
-            }, 3000)
+            } catch (error) {
+              setIsSubmitting(false)
+              setError(error.message || 'Failed to send email')
+            }
           }}
           disabled={!email.trim() || !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/) || isSubmitting}
           className="px-3 sm:px-4 py-2 sm:py-3 hover:bg-teal-700 transition-colors rounded-r-lg disabled:opacity-50 disabled:cursor-not-allowed"
@@ -92,7 +121,10 @@ function FloatingActionButtonExport({ bookmarkCount }) {
       <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 flex items-center bg-teal-600 text-white rounded-lg shadow-lg text-sm sm:text-base font-medium">
         {/* Back button */}
         <button
-          onClick={() => setIsExpanded(false)}
+          onClick={() => {
+            setIsExpanded(false)
+            setError('')
+          }}
           className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 hover:bg-teal-700 transition-colors rounded-l-lg"
         >
           <ArrowLeftIcon className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -116,8 +148,12 @@ function FloatingActionButtonExport({ bookmarkCount }) {
         {/* Copy link button */}
         <button
           onClick={async () => {
+            const playlistUrl = activePlaylistId 
+              ? `${APP_CONFIG.DOMAIN}/playlist/${activePlaylistId}`
+              : "No playlist available"
+            
             try {
-              await navigator.clipboard.writeText("PLACEHOLDER FOR PLAYLIST PERMALINK")
+              await navigator.clipboard.writeText(playlistUrl)
               setIsLinkCopied(true)
               // Show success for 3 seconds, then revert to default
               setTimeout(() => {
@@ -128,7 +164,7 @@ function FloatingActionButtonExport({ bookmarkCount }) {
               console.error('Failed to copy link:', err)
               // Fallback for older browsers
               const textArea = document.createElement('textarea')
-              textArea.value = "PLACEHOLDER FOR PLAYLIST PERMALINK"
+              textArea.value = playlistUrl
               document.body.appendChild(textArea)
               textArea.select()
               document.execCommand('copy')
