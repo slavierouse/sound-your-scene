@@ -1,6 +1,7 @@
 import uuid
 import random
 import asyncio
+import json
 from datetime import datetime
 from fastapi import HTTPException, BackgroundTasks
 from typing import Dict, Any, Optional
@@ -71,10 +72,10 @@ async def create_search_job(request: SearchRequest, background_tasks: Background
     except Exception as e:
         print(f"⚠️ Background search task failed (non-fatal): {e}")
     
-    # LAYER 3: Database persistence (runs in parallel, captures all attempts)
+    # LAYER 3: Database persistence (immediate for job visibility across workers)
     try:
-        background_tasks.add_task(
-            async_persist_session_data,
+        # Persist job immediately so other workers can see it
+        await async_persist_session_data(
             user_session_id,
             job_id,
             request.query_text,
@@ -85,9 +86,9 @@ async def create_search_job(request: SearchRequest, background_tasks: Background
             search_session_id
         )
     except Exception as e:
-        print(f"⚠️ Background session persistence task failed (non-fatal): {e}")
+        print(f"⚠️ Session persistence failed (non-fatal): {e}")
     
-    # Return immediately - no database blocking
+    # Return immediately
     return {
         "job_id": job_id,
         "user_session_id": user_session_id,
@@ -317,6 +318,7 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_m
     MAX_ITERATIONS = max_iters  # Total iterations including initial
     
     # Step 1: Initial search
+    print(f"🔍 [{job_id[:8]}] Starting auto-refinement with model: {assigned_model}")
     initial_prompt = llm_service.create_initial_prompt(user_query, has_image=bool(image_data))
     filters_json = await llm_service.query_llm(initial_prompt, image_data=image_data, model=assigned_model)
     
@@ -324,6 +326,8 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_m
     search_result = music_service.search(filters_json)
     results_df = search_result["results"]
     summary = search_result["summary"]
+    
+    print(f"📊 [{job_id[:8]}] Initial search: {len(results_df)} results")
     
     # Record initial step
     await add_refinement_step(
@@ -344,8 +348,11 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_m
     for i in range(max_iters - 1):
         count = len(current_results)
         
+        print(f"🔄 [{job_id[:8]}] Refinement {i+1}: Current count = {count}, Model: {assigned_model}")
+        
         # Only stop if we're in target range AND we've done at least 1 refinement
         if TARGET_MIN <= count <= TARGET_MAX and i > 0:
+            print(f"✅ [{job_id[:8]}] Target range achieved ({count}), stopping refinement")
             break
 
         # Create refinement prompt
@@ -364,6 +371,27 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_m
         refined_search = music_service.search(refined_filters)
         refined_results = refined_search["results"]
         refined_summary = refined_search["summary"]
+        
+        print(f"📈 [{job_id[:8]}] Refinement {i+1} result: {count} → {len(refined_results)} ({len(refined_results) - count:+d})")
+        
+        # Log key filter changes for tracking
+        key_changes = []
+        for key in ['valence_decile_min', 'valence_decile_max', 'energy_decile_min', 'energy_decile_max', 'danceability_decile_min', 'danceability_decile_max', 'spotify_artist_genres_include_any']:
+            old_val = current_filters.get(key)
+            new_val = refined_filters.get(key)
+            if old_val != new_val:
+                key_changes.append(f"{key}: {old_val} → {new_val}")
+        
+        if key_changes:
+            print(f"🔧 [{job_id[:8]}] Key changes: {'; '.join(key_changes)}")
+        
+        # Log dramatic swings with detailed context
+        if len(refined_results) > count * 10 or len(refined_results) < count / 10:
+            print(f"⚠️  [{job_id[:8]}] DRAMATIC SWING in refinement {i+1}: {count} → {len(refined_results)}")
+            print(f"🎯 [{job_id[:8]}] Model: {assigned_model}")
+            print(f"🎯 [{job_id[:8]}] Previous filters: {json.dumps(current_filters, indent=2)}")
+            print(f"🎯 [{job_id[:8]}] New filters: {json.dumps(refined_filters, indent=2)}")
+            print(f"🎯 [{job_id[:8]}] Original query: {user_query}")
         
         # Get image data from initial step if it exists
         job_data = get_job(job_id)
@@ -390,11 +418,13 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_m
         current_results = refined_results
         summary = refined_summary
     
-    # Update total auto refinements
+    # Update total auto refinements with final logging
     job_data = get_job(job_id)
     auto_refine_steps = len([s for s in job_data.conversation_history.steps if s.step_type == "auto_refine"])
     job_data.conversation_history.total_auto_refinements = auto_refine_steps
     store_job(job_id, job_data)
+    
+    print(f"✅ [{job_id[:8]}] Auto-refinement complete: {len(current_results)} final results after {auto_refine_steps} auto-refine steps")
     
     return current_filters, current_results
 
@@ -542,6 +572,16 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
         refined_results = refined_search["results"]
         refined_summary = refined_search["summary"]
         
+        print(f"📈 [{job_id[:8]}] User refine iteration {i+1} result: {count} → {len(refined_results)} ({len(refined_results) - count:+d})")
+        
+        # Log dramatic swings in user refinement process
+        if len(refined_results) > count * 10 or len(refined_results) < count / 10:
+            print(f"⚠️  [{job_id[:8]}] DRAMATIC SWING in user refine iteration {i+1}: {count} → {len(refined_results)}")
+            print(f"🎯 [{job_id[:8]}] Model: {assigned_model}")
+            print(f"🎯 [{job_id[:8]}] User feedback: {user_feedback}")
+            print(f"🎯 [{job_id[:8]}] Previous filters: {json.dumps(current_filters, indent=2)}")
+            print(f"🎯 [{job_id[:8]}] New filters: {json.dumps(refined_filters, indent=2)}")
+        
         # Get image data from initial step if it exists
         job_data = get_job(job_id)
         initial_image_data = None
@@ -567,11 +607,13 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
         current_results = refined_results
         summary = refined_summary
     
-    # Update total auto refinements in conversation history
+    # Update total auto refinements in conversation history with final logging
     job_data = get_job(job_id)
     auto_refine_steps = len([s for s in job_data.conversation_history.steps if s.step_type == "auto_refine"])
     job_data.conversation_history.total_auto_refinements = auto_refine_steps
     store_job(job_id, job_data)
+    
+    print(f"✅ [{job_id[:8]}] User refinement with auto-refine complete: {len(current_results)} final results after {auto_refine_steps} auto-refine steps")
     
     return current_filters, current_results
 

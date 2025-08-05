@@ -4,6 +4,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 import os
+import time
+import uuid
+from datetime import datetime
 
 from api.models import SearchRequest, JobResponse, ImageUploadResponse
 from api.search_service import create_search_job, get_job_status, initialize_services
@@ -13,7 +16,29 @@ from api.database import get_db
 from dotenv import load_dotenv
 load_dotenv('.env', override=True)
 
+# Generate unique worker ID for this process
+WORKER_ID = str(uuid.uuid4())[:8]
+print(f"🚀 Worker {WORKER_ID} starting up at {datetime.utcnow().isoformat()}")
+
 app = FastAPI(title="SoundByMood API", version="1.0.0")
+
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    timestamp = datetime.utcnow().isoformat()
+    
+    # Log incoming request
+    print(f"📥 [{WORKER_ID}] {timestamp} {request.method} {request.url.path}")
+    
+    # Process request
+    response = await call_next(request)
+    
+    # Log response with timing
+    process_time = round((time.time() - start_time) * 1000, 2)
+    print(f"📤 [{WORKER_ID}] {response.status_code} {request.url.path} ({process_time}ms)")
+    
+    return response
 
 # CORS middleware only in development
 environment = os.getenv('ENVIRONMENT', 'development')

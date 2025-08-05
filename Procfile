@@ -1,1 +1,1 @@
-web: gunicorn -k uvicorn.workers.UvicornWorker api.main:app --bind 0.0.0.0:8000 --workers 3 --timeout 180 --keep-alive 5 --preload --worker-connections 100 --backlog 512 --max-requests 200 --max-requests-jitter 20 --worker-tmp-dir /dev/shm
+web: gunicorn -k uvicorn.workers.UvicornWorker api.main:app --bind 0.0.0.0:8000 --workers 1 --timeout 180 --keep-alive 5 --preload --worker-connections 100 --backlog 512 --max-requests 200 --max-requests-jitter 20 --worker-tmp-dir /dev/shm
