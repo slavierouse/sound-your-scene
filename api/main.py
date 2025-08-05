@@ -48,9 +48,10 @@ def check_rate_limit(client_ip: str):
     
     try:
         # Check limits: 3/minute, 30/hour, 100/day
-        minute_key = f"rate_limit:{client_ip}:minute"
-        hour_key = f"rate_limit:{client_ip}:hour" 
-        day_key = f"rate_limit:{client_ip}:day"
+        # Use hash tags to ensure all keys hash to the same slot in Redis Cluster
+        minute_key = f"rate_limit:{{{client_ip}}}:minute"
+        hour_key = f"rate_limit:{{{client_ip}}}:hour" 
+        day_key = f"rate_limit:{{{client_ip}}}:day"
         
         minute_count = int(redis_client.get(minute_key) or 0)
         hour_count = int(redis_client.get(hour_key) or 0)

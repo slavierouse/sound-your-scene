@@ -64,6 +64,10 @@ def store_job(job_id: str, job_data: JobData):
             # Convert JobData to JSON using Pydantic's model_dump
             job_json = json.dumps(job_data.model_dump(), default=str)
             redis_client.setex(f"job:{job_id}", JOB_TTL_SECONDS, job_json)
+            
+            # Track job ID in a set for counting
+            redis_client.sadd("active_jobs", job_id)
+            # Note: Sets don't support individual TTL, so we'll clean up manually
             return
         except Exception as e:
             print(f"Redis store_job failed ({e}), using fallback")
@@ -96,6 +100,10 @@ def store_results(job_id: str, results: SearchResults):
             # Convert SearchResults to JSON using Pydantic's model_dump
             results_json = json.dumps(results.model_dump(), default=str)
             redis_client.setex(f"results:{job_id}", RESULTS_TTL_SECONDS, results_json)
+            
+            # Track result ID in a set for counting
+            redis_client.sadd("active_results", job_id)
+            # Note: Sets don't support individual TTL, so we'll clean up manually
             return
         except Exception as e:
             print(f"Redis store_results failed ({e}), using fallback")
@@ -138,10 +146,33 @@ def cleanup_old_jobs():
     
     if redis_client:
         try:
-            # Redis handles TTL automatically, just report stats
-            job_keys = redis_client.keys("job:*")
-            result_keys = redis_client.keys("results:*")
-            print(f"Redis cache status: {len(job_keys)} jobs, {len(result_keys)} results")
+            # Clean up expired entries from tracking sets
+            # Check each job in the set and remove if it no longer exists
+            active_jobs = redis_client.smembers("active_jobs")
+            expired_jobs = []
+            for job_id in active_jobs:
+                if not redis_client.exists(f"job:{job_id}"):
+                    expired_jobs.append(job_id)
+            
+            if expired_jobs:
+                redis_client.srem("active_jobs", *expired_jobs)
+                print(f"Cleaned up {len(expired_jobs)} expired jobs from tracking set")
+            
+            # Check each result in the set and remove if it no longer exists
+            active_results = redis_client.smembers("active_results")
+            expired_results = []
+            for job_id in active_results:
+                if not redis_client.exists(f"results:{job_id}"):
+                    expired_results.append(job_id)
+            
+            if expired_results:
+                redis_client.srem("active_results", *expired_results)
+                print(f"Cleaned up {len(expired_results)} expired results from tracking set")
+            
+            # Report final stats
+            job_count = redis_client.scard("active_jobs")
+            result_count = redis_client.scard("active_results")
+            print(f"Redis cache status: {job_count} jobs, {result_count} results")
             return
         except Exception as e:
             print(f"Redis cleanup check failed ({e})")
@@ -173,8 +204,9 @@ def get_cache_stats():
     if redis_client:
         try:
             info = redis_client.info('memory')
-            job_count = len(redis_client.keys("job:*"))
-            result_count = len(redis_client.keys("results:*"))
+            # Use sets to track active jobs and results
+            job_count = redis_client.scard("active_jobs")
+            result_count = redis_client.scard("active_results")
             
             return {
                 "backend": "redis",
