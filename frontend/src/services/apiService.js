@@ -22,19 +22,64 @@ export const apiService = {
       // Don't send search_session_id or model - let backend generate new ones
     }
     
-    const response = await fetch(`${API_BASE_URL}/search`, {
+    return await this.makeRequestWithRetry(`${API_BASE_URL}/search`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
     })
+  },
 
-    if (!response.ok) {
-      throw new Error('Search request failed')
+  async makeRequestWithRetry(url, options, maxRetries = 10) {
+    let attempt = 0
+    
+    while (attempt < maxRetries) {
+      try {
+        const response = await fetch(url, options)
+        
+        // Handle rate limiting (429) and overload (503) with retry
+        if (response.status === 429 || response.status === 503) {
+          const errorData = await response.json().catch(() => ({}))
+          const retryAfter = response.headers.get('Retry-After') || Math.pow(2, attempt)
+          const delay = Math.min(parseInt(retryAfter) * 1000, 60000) // Max 60 seconds
+          
+          console.log(`Request ${response.status === 429 ? 'rate limited' : 'overloaded'}, retrying in ${delay/1000}s (attempt ${attempt + 1}/${maxRetries})`)
+          
+          // Throw error with retry info for UI to display
+          throw new Error(`${errorData.error || 'Server busy'}. Retrying in ${Math.ceil(delay/1000)} seconds... (${attempt + 1}/${maxRetries})`)
+        }
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          throw new Error(errorData.error || errorData.detail || 'Request failed')
+        }
+
+        return response.json()
+        
+      } catch (error) {
+        attempt++
+        
+        // If it's our rate limit/overload error, wait and retry
+        if (error.message.includes('Retrying in') && attempt < maxRetries) {
+          const delayMatch = error.message.match(/(\d+) seconds/)
+          const delay = delayMatch ? parseInt(delayMatch[1]) * 1000 : Math.pow(2, attempt) * 1000
+          
+          await new Promise(resolve => setTimeout(resolve, delay))
+          continue
+        }
+        
+        // For other errors or max attempts reached, throw immediately
+        if (attempt >= maxRetries) {
+          throw new Error(`Request failed after ${maxRetries} attempts: ${error.message}`)
+        }
+        
+        // Exponential backoff for network errors
+        const delay = Math.min(Math.pow(2, attempt) * 1000, 30000) // Max 30 seconds
+        console.log(`Network error, retrying in ${delay/1000}s (attempt ${attempt + 1}/${maxRetries})`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
     }
-
-    return response.json()
   },
 
   async getJobStatus(jobId) {

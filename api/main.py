@@ -1,11 +1,12 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 import os
 import time
 import uuid
+import psutil
 from datetime import datetime
 
 from api.models import SearchRequest, JobResponse, ImageUploadResponse
@@ -18,9 +19,97 @@ load_dotenv('.env', override=True)
 
 # Generate unique worker ID for this process
 WORKER_ID = str(uuid.uuid4())[:8]
-print(f"🚀 Worker {WORKER_ID} starting up at {datetime.utcnow().isoformat()}")
+print(f"Worker {WORKER_ID} starting up at {datetime.utcnow().isoformat()}")
 
 app = FastAPI(title="SoundByMood API", version="1.0.0")
+
+def check_system_overload():
+    """Check if this worker is overloaded based on system resources"""
+    # Memory pressure check
+    memory_percent = psutil.virtual_memory().percent
+    if memory_percent > 90:
+        return True, f"High memory usage ({memory_percent}%)"
+    
+    # CPU pressure check  
+    cpu_percent = psutil.cpu_percent(interval=1)
+    if cpu_percent > 90:
+        return True, f"High CPU usage ({cpu_percent}%)"
+    
+    return False, None
+
+def check_rate_limit(client_ip: str):
+    """Check if client IP has exceeded rate limits"""
+    from api.storage import get_redis_client
+    
+    redis_client = get_redis_client()
+    if not redis_client:
+        # No rate limiting if Redis unavailable
+        return False, None
+    
+    try:
+        # Check limits: 3/minute, 30/hour, 100/day
+        minute_key = f"rate_limit:{client_ip}:minute"
+        hour_key = f"rate_limit:{client_ip}:hour" 
+        day_key = f"rate_limit:{client_ip}:day"
+        
+        minute_count = int(redis_client.get(minute_key) or 0)
+        hour_count = int(redis_client.get(hour_key) or 0)
+        day_count = int(redis_client.get(day_key) or 0)
+        
+        if minute_count >= 3:
+            ttl = redis_client.ttl(minute_key)
+            return True, f"Rate limit exceeded: 3 searches per minute. Please wait {ttl} seconds."
+        
+        if hour_count >= 30:
+            ttl = redis_client.ttl(hour_key)
+            return True, f"Rate limit exceeded: 30 searches per hour. Please wait {ttl//60} minutes."
+        
+        if day_count >= 100:
+            ttl = redis_client.ttl(day_key)
+            return True, f"Rate limit exceeded: 100 searches per day. Please wait {ttl//3600} hours."
+        
+        # Increment counters
+        pipe = redis_client.pipeline()
+        pipe.incr(minute_key)
+        pipe.expire(minute_key, 60)  # 1 minute
+        pipe.incr(hour_key)
+        pipe.expire(hour_key, 3600)  # 1 hour
+        pipe.incr(day_key)
+        pipe.expire(day_key, 86400)  # 24 hours
+        pipe.execute()
+        
+        return False, None
+        
+    except Exception as e:
+        print(f"Rate limit check failed: {e}")
+        return False, None  # Allow request if rate limiting fails
+
+# System overload and rate limiting middleware
+@app.middleware("http")
+async def protection_middleware(request: Request, call_next):
+    # Only apply to search endpoint
+    if request.url.path == "/search":
+        client_ip = request.client.host if request.client else "unknown"
+        
+        # Check rate limits
+        is_rate_limited, rate_limit_msg = check_rate_limit(client_ip)
+        if is_rate_limited:
+            return JSONResponse(
+                status_code=429,
+                content={"error": rate_limit_msg},
+                headers={"Retry-After": "60"}
+            )
+        
+        # Check system overload
+        is_overloaded, overload_msg = check_system_overload()
+        if is_overloaded:
+            return JSONResponse(
+                status_code=503,
+                content={"error": f"System temporarily overloaded: {overload_msg}. Please retry in a moment."},
+                headers={"Retry-After": "30"}
+            )
+    
+    return await call_next(request)
 
 # Request logging middleware
 @app.middleware("http")
@@ -29,14 +118,14 @@ async def log_requests(request: Request, call_next):
     timestamp = datetime.utcnow().isoformat()
     
     # Log incoming request
-    print(f"📥 [{WORKER_ID}] {timestamp} {request.method} {request.url.path}")
+    print(f"[{WORKER_ID}] {timestamp} {request.method} {request.url.path}")
     
     # Process request
     response = await call_next(request)
     
     # Log response with timing
     process_time = round((time.time() - start_time) * 1000, 2)
-    print(f"📤 [{WORKER_ID}] {response.status_code} {request.url.path} ({process_time}ms)")
+    print(f"[{WORKER_ID}] {response.status_code} {request.url.path} ({process_time}ms)")
     
     return response
 
@@ -75,25 +164,28 @@ async def shutdown_event():
     try:
         from api.database import close_db
         close_db()
-        print("🛑 Server shutdown complete")
+        print("Server shutdown complete")
     except Exception as e:
-        print(f"⚠️ Shutdown cleanup error (non-fatal): {e}")
+        print(f"Shutdown cleanup error (non-fatal): {e}")
 
 @app.get("/health")
 async def health_check():
     """Enhanced health check for load balancer (no database dependency)"""
     try:
-        from api.storage import JOB_STORE, RESULT_STORE
+        from api.storage import get_cache_stats
         import psutil
         from datetime import datetime
         
         memory_percent = psutil.virtual_memory().percent
+        cache_stats = get_cache_stats()
         
         return {
             "status": "healthy",
             "memory_usage": f"{memory_percent}%",
-            "active_jobs": len(JOB_STORE),
-            "cached_results": len(RESULT_STORE),
+            "cache_backend": cache_stats["backend"],
+            "active_jobs": cache_stats["job_count"],
+            "cached_results": cache_stats["result_count"],
+            "redis_connected": cache_stats["connected"],
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:

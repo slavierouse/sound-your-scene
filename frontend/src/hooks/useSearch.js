@@ -82,8 +82,20 @@ export function useSearch(sessionData, setSessionData) {
         }
       }
     } catch (err) {
+      // Show retry messages in loading step instead of error for temporary issues
+      if (err.message.includes('Retrying in')) {
+        setLoadingStep({ 
+          message: err.message, 
+          step: "retrying", 
+          animated: true 
+        })
+        // Don't set error or stop loading - let the retry continue
+        return
+      }
+      
       setError(err.message)
       setIsLoading(false)
+      setLoadingStep(null)
     }
   }
 
@@ -93,14 +105,14 @@ export function useSearch(sessionData, setSessionData) {
 
     let consecutiveFailures = 0
     const MAX_CONSECUTIVE_FAILURES = 3
-    const POLLING_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+    const POLLING_TIMEOUT_MS = 6 * 60 * 1000 // 6 minutes
     const pollingStartTime = Date.now()
 
     const pollResults = async () => {
       try {
         // Check for overall timeout
         if (Date.now() - pollingStartTime > POLLING_TIMEOUT_MS) {
-          setError("Search timed out after 5 minutes. Please try again.")
+          setError("Search timed out after 6 minutes. Please try again.")
           setIsLoading(false)
           setLoadingStep(null)
           setJobId(null)
@@ -113,6 +125,9 @@ export function useSearch(sessionData, setSessionData) {
         consecutiveFailures = 0
         
         if (data.status === 'done') {
+          // Clear jobId immediately to stop further polling
+          setJobId(null)
+          
           setResults(data.results?.tracks || [])
           setMeta({
             llm_message: data.results?.llm_message,
@@ -121,16 +136,27 @@ export function useSearch(sessionData, setSessionData) {
             job_id: jobId
           })
           
-          // Add bot response to chat history
+          // Add bot response to chat history (prevent duplicates)
           const botMessage = data.results?.llm_message || 
             (data.results?.result_count === 0 ? "No results found. Please try widening your search." : null)
           
           if (botMessage) {
-            setChatHistory(prev => [...prev, {
-              content: botMessage,
-              isUser: false,
-              timestamp: new Date().toISOString()
-            }])
+            setChatHistory(prev => {
+              // Check if this message already exists to prevent duplicates
+              const messageExists = prev.some(msg => 
+                !msg.isUser && msg.content === botMessage
+              )
+              
+              if (messageExists) {
+                return prev // Don't add duplicate
+              }
+              
+              return [...prev, {
+                content: botMessage,
+                isUser: false,
+                timestamp: new Date().toISOString()
+              }]
+            })
           }
           
           // Update conversation history for future requests
@@ -140,7 +166,6 @@ export function useSearch(sessionData, setSessionData) {
           
           setIsLoading(false)
           setLoadingStep(null)
-          setJobId(null)
         } else if (data.status === 'error') {
           setError(data.error_message || 'Search failed')
           setIsLoading(false)

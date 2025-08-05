@@ -70,7 +70,7 @@ async def create_search_job(request: SearchRequest, background_tasks: Background
             request.image_data
         )
     except Exception as e:
-        print(f"⚠️ Background search task failed (non-fatal): {e}")
+        print(f" Background search task failed (non-fatal): {e}")
     
     # LAYER 3: Database persistence (immediate for job visibility across workers)
     try:
@@ -86,7 +86,7 @@ async def create_search_job(request: SearchRequest, background_tasks: Background
             search_session_id
         )
     except Exception as e:
-        print(f"⚠️ Session persistence failed (non-fatal): {e}")
+        print(f" Session persistence failed (non-fatal): {e}")
     
     # Return immediately
     return {
@@ -297,7 +297,7 @@ async def process_search_job(job_id: str, query_text: str, existing_conversation
         try:
             asyncio.create_task(async_update_search_job_completion(job_id, filters_json, final_results_df))
         except Exception as e:
-            print(f"⚠️ Background task creation failed (non-fatal): {e}")
+            print(f" Background task creation failed (non-fatal): {e}")
         
     except Exception as e:
         # Update job with error
@@ -318,7 +318,7 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_m
     MAX_ITERATIONS = max_iters  # Total iterations including initial
     
     # Step 1: Initial search
-    print(f"🔍 [{job_id[:8]}] Starting auto-refinement with model: {assigned_model}")
+    print(f" [{job_id[:8]}] Starting auto-refinement with model: {assigned_model}")
     initial_prompt = llm_service.create_initial_prompt(user_query, has_image=bool(image_data))
     filters_json = await llm_service.query_llm(initial_prompt, image_data=image_data, model=assigned_model)
     
@@ -327,7 +327,7 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_m
     results_df = search_result["results"]
     summary = search_result["summary"]
     
-    print(f"📊 [{job_id[:8]}] Initial search: {len(results_df)} results")
+    print(f" [{job_id[:8]}] Initial search: {len(results_df)} results")
     
     # Record initial step
     await add_refinement_step(
@@ -348,11 +348,11 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_m
     for i in range(max_iters - 1):
         count = len(current_results)
         
-        print(f"🔄 [{job_id[:8]}] Refinement {i+1}: Current count = {count}, Model: {assigned_model}")
+        print(f" [{job_id[:8]}] Refinement {i+1}: Current count = {count}, Model: {assigned_model}")
         
         # Only stop if we're in target range AND we've done at least 1 refinement
         if TARGET_MIN <= count <= TARGET_MAX and i > 0:
-            print(f"✅ [{job_id[:8]}] Target range achieved ({count}), stopping refinement")
+            print(f" [{job_id[:8]}] Target range achieved ({count}), stopping refinement")
             break
 
         # Create refinement prompt
@@ -372,7 +372,7 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_m
         refined_results = refined_search["results"]
         refined_summary = refined_search["summary"]
         
-        print(f"📈 [{job_id[:8]}] Refinement {i+1} result: {count} → {len(refined_results)} ({len(refined_results) - count:+d})")
+        print(f" [{job_id[:8]}] Refinement {i+1} result: {count} -> {len(refined_results)} ({len(refined_results) - count:+d})")
         
         # Log key filter changes for tracking
         key_changes = []
@@ -380,18 +380,18 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_m
             old_val = current_filters.get(key)
             new_val = refined_filters.get(key)
             if old_val != new_val:
-                key_changes.append(f"{key}: {old_val} → {new_val}")
+                key_changes.append(f"{key}: {old_val} -> {new_val}")
         
         if key_changes:
-            print(f"🔧 [{job_id[:8]}] Key changes: {'; '.join(key_changes)}")
+            print(f" [{job_id[:8]}] Key changes: {'; '.join(key_changes)}")
         
         # Log dramatic swings with detailed context
         if len(refined_results) > count * 10 or len(refined_results) < count / 10:
-            print(f"⚠️  [{job_id[:8]}] DRAMATIC SWING in refinement {i+1}: {count} → {len(refined_results)}")
-            print(f"🎯 [{job_id[:8]}] Model: {assigned_model}")
-            print(f"🎯 [{job_id[:8]}] Previous filters: {json.dumps(current_filters, indent=2)}")
-            print(f"🎯 [{job_id[:8]}] New filters: {json.dumps(refined_filters, indent=2)}")
-            print(f"🎯 [{job_id[:8]}] Original query: {user_query}")
+            print(f"  [{job_id[:8]}] DRAMATIC SWING in refinement {i+1}: {count} -> {len(refined_results)}")
+            print(f" [{job_id[:8]}] Model: {assigned_model}")
+            print(f" [{job_id[:8]}] Previous filters: {json.dumps(current_filters, indent=2)}")
+            print(f" [{job_id[:8]}] New filters: {json.dumps(refined_filters, indent=2)}")
+            print(f" [{job_id[:8]}] Original query: {user_query}")
         
         # Get image data from initial step if it exists
         job_data = get_job(job_id)
@@ -424,7 +424,7 @@ async def run_auto_refine_with_tracking(job_id: str, user_query: str, assigned_m
     job_data.conversation_history.total_auto_refinements = auto_refine_steps
     store_job(job_id, job_data)
     
-    print(f"✅ [{job_id[:8]}] Auto-refinement complete: {len(current_results)} final results after {auto_refine_steps} auto-refine steps")
+    print(f" [{job_id[:8]}] Auto-refinement complete: {len(current_results)} final results after {auto_refine_steps} auto-refine steps")
     
     return current_filters, current_results
 
@@ -572,15 +572,15 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
         refined_results = refined_search["results"]
         refined_summary = refined_search["summary"]
         
-        print(f"📈 [{job_id[:8]}] User refine iteration {i+1} result: {count} → {len(refined_results)} ({len(refined_results) - count:+d})")
+        print(f" [{job_id[:8]}] User refine iteration {i+1} result: {count} -> {len(refined_results)} ({len(refined_results) - count:+d})")
         
         # Log dramatic swings in user refinement process
         if len(refined_results) > count * 10 or len(refined_results) < count / 10:
-            print(f"⚠️  [{job_id[:8]}] DRAMATIC SWING in user refine iteration {i+1}: {count} → {len(refined_results)}")
-            print(f"🎯 [{job_id[:8]}] Model: {assigned_model}")
-            print(f"🎯 [{job_id[:8]}] User feedback: {user_feedback}")
-            print(f"🎯 [{job_id[:8]}] Previous filters: {json.dumps(current_filters, indent=2)}")
-            print(f"🎯 [{job_id[:8]}] New filters: {json.dumps(refined_filters, indent=2)}")
+            print(f"  [{job_id[:8]}] DRAMATIC SWING in user refine iteration {i+1}: {count} -> {len(refined_results)}")
+            print(f" [{job_id[:8]}] Model: {assigned_model}")
+            print(f" [{job_id[:8]}] User feedback: {user_feedback}")
+            print(f" [{job_id[:8]}] Previous filters: {json.dumps(current_filters, indent=2)}")
+            print(f" [{job_id[:8]}] New filters: {json.dumps(refined_filters, indent=2)}")
         
         # Get image data from initial step if it exists
         job_data = get_job(job_id)
@@ -613,7 +613,7 @@ async def run_user_refinement_with_auto_refine(job_id: str, user_feedback: str, 
     job_data.conversation_history.total_auto_refinements = auto_refine_steps
     store_job(job_id, job_data)
     
-    print(f"✅ [{job_id[:8]}] User refinement with auto-refine complete: {len(current_results)} final results after {auto_refine_steps} auto-refine steps")
+    print(f" [{job_id[:8]}] User refinement with auto-refine complete: {len(current_results)} final results after {auto_refine_steps} auto-refine steps")
     
     return current_filters, current_results
 
@@ -761,8 +761,8 @@ async def async_persist_session_data(
                 
                 # The current user query is already included in conversation_history.steps
                 # So len(user_initiated_steps) already counts the current turn we're processing
-                # Turn 1: initial query → user_initiated_steps = 1 → conversation_turn = 1  
-                # Turn 2: first refinement → user_initiated_steps = 2 → conversation_turn = 2
+                # Turn 1: initial query -> user_initiated_steps = 1 -> conversation_turn = 1  
+                # Turn 2: first refinement -> user_initiated_steps = 2 -> conversation_turn = 2
                 conversation_turn = len(user_initiated_steps)
                 print(f"DEBUG: User turn calculation - total steps: {len(conversation_history.steps)}, user steps: {len(user_initiated_steps)}, turn: {conversation_turn}")
             
