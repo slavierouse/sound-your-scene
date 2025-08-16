@@ -23,6 +23,56 @@ print(f"Worker {WORKER_ID} starting up at {datetime.utcnow().isoformat()}")
 
 app = FastAPI(title="SoundByMood API", version="1.0.0")
 
+def get_client_ip(request: Request) -> str:
+    """
+    Extract the real client IP address from request headers.
+    
+    Checks common proxy headers in order of preference:
+    1. X-Forwarded-For (most common, comma-separated list - take first)
+    2. X-Real-IP (single IP from reverse proxy)
+    3. CF-Connecting-IP (Cloudflare)
+    4. request.client.host (fallback to direct connection)
+    
+    Returns 'unknown' if no IP can be determined.
+    """
+    # Check environment for debug logging
+    environment = os.getenv('ENV', 'development').lower()
+    
+    # X-Forwarded-For header (most common proxy header)
+    # Format: "client_ip, proxy1_ip, proxy2_ip"
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        # Take the first IP (leftmost) which should be the original client
+        client_ip = x_forwarded_for.split(",")[0].strip()
+        if client_ip and client_ip != "unknown":
+            if environment == 'development':
+                print(f"[IP] Using X-Forwarded-For: {client_ip} (from: {x_forwarded_for})")
+            return client_ip
+    
+    # X-Real-IP header (single IP from reverse proxy)
+    x_real_ip = request.headers.get("X-Real-IP")
+    if x_real_ip and x_real_ip != "unknown":
+        if environment == 'development':
+            print(f"[IP] Using X-Real-IP: {x_real_ip}")
+        return x_real_ip.strip()
+    
+    # Cloudflare connecting IP
+    cf_connecting_ip = request.headers.get("CF-Connecting-IP")
+    if cf_connecting_ip and cf_connecting_ip != "unknown":
+        if environment == 'development':
+            print(f"[IP] Using CF-Connecting-IP: {cf_connecting_ip}")
+        return cf_connecting_ip.strip()
+    
+    # Fallback to direct connection IP
+    if request.client and request.client.host:
+        if environment == 'development':
+            print(f"[IP] Using direct connection: {request.client.host}")
+        return request.client.host
+    
+    if environment == 'development':
+        print("[IP] No IP could be determined, using 'unknown'")
+    return "unknown"
+
 def check_system_overload():
     """Check if this worker is overloaded based on system resources"""
     # Memory pressure check
@@ -90,7 +140,7 @@ def check_rate_limit(client_ip: str):
 async def protection_middleware(request: Request, call_next):
     # Only apply to search endpoint
     if request.url.path == "/search":
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = get_client_ip(request)
         
         # Check rate limits
         is_rate_limited, rate_limit_msg = check_rate_limit(client_ip)
@@ -214,7 +264,7 @@ async def create_search(
 ):
     """Create a new search job and process it in the background"""
     # Get client IP for user session tracking
-    client_ip = request.client.host if request.client else None
+    client_ip = get_client_ip(request)
     
     return await create_search_job(search_request, background_tasks, db, client_ip)
 
@@ -345,7 +395,7 @@ async def email_playlist(
         raise HTTPException(status_code=400, detail="Invalid email format")
     
     # Get client IP for security checks
-    client_ip = request.client.host if request.client else None
+    client_ip = get_client_ip(request)
     
     # Security checks: rate limiting and abuse prevention
     is_allowed, security_error = email_security.check_rate_limits(db, client_ip, email)

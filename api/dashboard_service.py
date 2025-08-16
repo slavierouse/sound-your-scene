@@ -3,9 +3,34 @@ from sqlalchemy import text, func
 from api.db_models import UserSession, SearchSession, SearchJob, SearchResult, TrackEvent, Playlist, EmailSend
 from typing import Dict, List, Any
 import json
+import hashlib
+import os
 
 class DashboardService:
     """Service for generating performance metrics dashboard data"""
+    
+    @staticmethod
+    def _anonymize_user_identifier(user_identifier: str) -> str:
+        """
+        Anonymize user identifier (IP address) for analytics display.
+        
+        In production (ENV=production): Uses SHA256 hash for non-reversible anonymization.
+        In development (ENV=development): Returns raw IP for debugging.
+        Same IP will always get same anonymous ID for analytics continuity.
+        """
+        if not user_identifier:
+            return "anonymous"
+        
+        # Check environment variable - show raw IPs in development
+        environment = os.getenv('ENV', 'development').lower()
+        
+        if environment == 'production':
+            # Hash the identifier and take first 8 characters for anonymization
+            hash_object = hashlib.sha256(user_identifier.encode())
+            return f"user_{hash_object.hexdigest()[:8]}"
+        else:
+            # In development, return the raw IP for debugging
+            return user_identifier
     
     @staticmethod
     def get_volume_metrics(db: Session) -> Dict[str, int]:
@@ -860,6 +885,10 @@ class DashboardService:
             FROM search_jobs WHERE filters_json IS NOT NULL AND completed_at IS NOT NULL AND filters_json->>'track_is_explicit_min' IS NOT NULL
             UNION ALL SELECT job_id, 'track_is_explicit_max', (filters_json->>'track_is_explicit_max')::float, 'max'
             FROM search_jobs WHERE filters_json IS NOT NULL AND completed_at IS NOT NULL AND filters_json->>'track_is_explicit_max' IS NOT NULL
+            UNION ALL SELECT job_id, 'key_min', (filters_json->>'key_min')::float, 'min'
+            FROM search_jobs WHERE filters_json IS NOT NULL AND completed_at IS NOT NULL AND filters_json->>'key_min' IS NOT NULL
+            UNION ALL SELECT job_id, 'key_max', (filters_json->>'key_max')::float, 'max'
+            FROM search_jobs WHERE filters_json IS NOT NULL AND completed_at IS NOT NULL AND filters_json->>'key_max' IS NOT NULL
             -- Add weight fields (non-zero values only)
             UNION ALL SELECT job_id, 'danceability_decile_weight', (filters_json->>'danceability_decile_weight')::float, 'weight'
             FROM search_jobs WHERE filters_json IS NOT NULL AND completed_at IS NOT NULL 
@@ -1047,7 +1076,7 @@ class DashboardService:
         
         return [
             {
-                "user": row.user_identifier if '@' in str(row.user_identifier) else row.user_identifier[:20] + "..." if len(str(row.user_identifier)) > 20 else str(row.user_identifier),
+                "user": DashboardService._anonymize_user_identifier(str(row.user_identifier)),
                 "session_count": row.session_count,
                 "search_count": row.search_count,
                 "search_job_count": row.search_job_count,

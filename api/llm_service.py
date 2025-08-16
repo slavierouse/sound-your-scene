@@ -180,6 +180,7 @@ instrumentalness: A float between 0 and 1 predicting whether a track contains no
 For the following features, you can only create mix/max filters:
 album_release_year: the year the track was released in, represented as an integer. This is the year the recording was made, not the year a classical composition was written. 
 track_is_explicit: this is 0 for tracks without explicit language and 1 for tracks marked as explicit language. 
+key: the key the track is in. Only use this if the user explictly asks for it. 0 is C, 1 is C# or Db, 2 is D, 3 is D# or Eb, 4 is E, 5 is F, 6 is F# or Gb, 7 is G, 8 is G# or Ab, 9 is A, 10 is A# or Bb, 11 is B.
 
 For 60% of tracks, we were also able to pull the artist's genres into a comma separated list field. You can use these to create filters and scoring against that field. Note that any filtering will only apply to the 60% of tracks that have genres.
 Values you can choose and are common are: pop, rock, r&b, hip hop, rap, edm, house, reggaeton, latin, country, k-pop, bollywood, metal, disco, orchestra, classical.

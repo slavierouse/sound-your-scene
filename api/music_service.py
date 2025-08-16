@@ -8,7 +8,7 @@ class MusicService:
         self.main_df = None
         self.deciles_features_list = ['danceability', 'energy','acousticness', 'liveness', 'valence','views'] #, 'speechiness'
         self.direct_use_features = ['loudness','tempo','duration_ms','instrumentalness']
-        self.minmax_only_features = ['album_release_year','track_is_explicit']
+        self.minmax_only_features = ['album_release_year','track_is_explicit','key']
         
     def initialize(self, data_path: str = 'data/main_df.csv'):
         """Load and initialize the music dataset"""
@@ -107,7 +107,7 @@ class MusicService:
             "spotify_track_id", "track", "artist","spotify_artist_genres",
             'danceability_decile', 'energy_decile', 'acousticness_decile', 'instrumentalness_decile', 'liveness_decile', 'valence_decile','views_decile', #'speechiness_decile',
             'loudness', "tempo", "instrumentalness",
-            "album_release_year", "duration_ms", "track_is_explicit",
+            "album_release_year", "duration_ms", "track_is_explicit", "key",
             "relevance_score",
             "url_youtube"
         ]
@@ -161,6 +161,7 @@ class MusicService:
                 album_release_year=int(row["album_release_year"]),
                 spotify_artist_genres=str(row.get("spotify_artist_genres", "")) if pd.notna(row.get("spotify_artist_genres")) else "",
                 track_is_explicit=bool(row["track_is_explicit"]),
+                key=int(row["key"]),
                 duration_ms=int(row["duration_ms"]),
                 url_youtube=row.get("url_youtube"),
                 spotify_url=f"https://open.spotify.com/track/{row['spotify_track_id']}",
@@ -236,6 +237,7 @@ class MusicService:
                         album_release_year=int(row["album_release_year"]),
                         spotify_artist_genres=str(row.get("spotify_artist_genres", "")) if pd.notna(row.get("spotify_artist_genres")) else "",
                         track_is_explicit=bool(row["track_is_explicit"]),
+                        key=int(row["key"]),
                         duration_ms=int(row["duration_ms"]),
                         url_youtube=row.get("url_youtube"),
                         spotify_url=f"https://open.spotify.com/track/{spotify_track_id}",

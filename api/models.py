@@ -54,6 +54,7 @@ class TrackResult(BaseModel):
     album_release_year: int
     spotify_artist_genres: Optional[str]
     track_is_explicit: bool
+    key: int
     duration_ms: int
     
     # URLs
@@ -147,6 +148,8 @@ def create_filters_model():
     fields['album_release_year_max'] = (int, 2025)
     fields['track_is_explicit_min'] = (int, 0)
     fields['track_is_explicit_max'] = (int, 1)
+    fields['key_min'] = (int, 0)
+    fields['key_max'] = (int, 11)
     
     # String features
     fields['spotify_artist_genres_include_any'] = (str, '')
